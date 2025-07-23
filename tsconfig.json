@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",                    // Modern JS output
+    "module": "ESNext",                    // ES module format (for modern bundlers)
+    "rootDir": "./src",                    // Source files
+    "outDir": "./dist",                    // Compiled output
+    "declaration": true,                   // Generate .d.ts files for TS support
+    "declarationMap": true,                // Source maps for .d.ts
+    "esModuleInterop": true,               // Allows default import compatibility
+    "moduleResolution": "node",
+    "resolveJsonModule": true,             // Allow importing JSON
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,                        // Enable strict type-checking
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "example", "test"]
+}
