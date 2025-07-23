@@ -14,7 +14,7 @@
   "scripts": {
   "build": "tsup src/index.ts --format esm,cjs --dts --out-dir dist --clean"  },
   "keywords": [],
-  "license": "ISC",
+  "license": "Apache-2.0",
   "type": "commonjs",
   "devDependencies": {
     "@types/node": "^24.1.0",
