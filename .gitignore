@@ -20,3 +20,9 @@ yarn-error.log*
 .vscode/
 .idea/
 .DS_Store
+
+# Test coverage
+coverage/
+
+# Mac system files
+*.DS_Store
