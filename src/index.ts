@@ -16,3 +16,6 @@
 
 export { createClient } from './utils/createClient';
 export type { RequestConfig } from './types/index';
+export { createAuthMiddleware } from './middleware/AuthMiddleware';
+export { logout } from './core/TokenManager';
+export { setAccessToken, setRefreshToken, setTokens ,getAccessToken,getRefreshToken,isAccessTokenExpired,isRefreshTokenExpired,getAccessExpiresAt,TokenAge} from './core/TokenManager';

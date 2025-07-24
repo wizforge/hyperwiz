@@ -1,23 +1,47 @@
 {
   "name": "hyperwiz",
-  "version": "0.0.2",
+  "version": "0.0.13",
+  "description": "A powerful, smart HTTP client with built-in retry, caching, and auth management — an advanced Axios alternative.",
+  "author": "Parth Tyagi",
+  "license": "Apache-2.0",
+  "type": "module",
   "types": "dist/index.d.ts",
-  "description": "A simple library for Hyperwiz",
-  "author": "Parth Tyagi",      
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "sideEffects": false,
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.js"
     }
   },
+  "engines": {
+    "node": ">=16.0.0"
+  },
   "files": ["dist"],
   "scripts": {
-  "build": "tsup src/index.ts --format esm,cjs --dts --out-dir dist --clean"  },
-  "keywords": [],
-  "license": "Apache-2.0",
-  "type": "commonjs",
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean --out-dir dist"
+  },
+  "keywords": [
+    "http-client",
+    "fetch-wrapper",
+    "retry",
+    "api-client",
+    "typescript",
+    "request-caching",
+    "jwt-auth",
+    "developer-tools"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wizforge/hyperwiz"
+  },
+  "bugs": {
+    "url": "https://github.com/wizforge/hyperwiz/issues"
+  },
+  "homepage": "https://wizforge.dev/hyperwiz",
   "devDependencies": {
-    "@types/node": "^24.1.0",
+    "@types/node": "^20.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3"
   }
