@@ -1,51 +1,60 @@
 import { getAccessToken, getRefreshToken, getAccessExpiresAt,logout, getRefreshExpiresAt, setTokens, isAccessTokenExpired, isRefreshTokenExpired } from "../core/TokenManager";
 import { HttpClient } from "../core/HttpClient";
 import { TokenAge } from "../core/TokenManager";
+import { tryRefreshToken } from "../utils/tokenUtils";
 
 export function createAuthMiddleware(client: HttpClient) {
-    return async function withAuth(requestFn: (headers: HeadersInit) => Promise<Response>) {
+    return async function withAuth<T>(requestFn: (headers: HeadersInit) => Promise<T>): Promise<T> {
         let accessToken = getAccessToken();
         let refreshToken = getRefreshToken();
-        let accessExpiresAt = getAccessExpiresAt();
-        let refreshExpiresAt = getRefreshExpiresAt();
         let ageInSeconds = parseInt(localStorage.getItem('accessToken_age') || '') || TokenAge.seconds(60, 'accessToken');
-        let response: Response | null = null;
-        let authHeaders = {};
-        if (isAccessTokenExpired()) {
-            if (isRefreshTokenExpired()) {
+        let refreshAgeInSeconds = parseInt(localStorage.getItem('refreshToken_age') || '') || null;
+        let authHeaders: HeadersInit = {};
+        
+        // Check if access token is expired and try to refresh
+        if (isAccessTokenExpired() && accessToken) {
+            if (isRefreshTokenExpired() && refreshToken) {
                 redirectToLogin(client);
-                return new Response("Unauthorized", { status: 401 });
-            } else {
-                const response = await tryRefreshToken(client, refreshToken);
-                if (response?.accessToken) {
-                    setTokens(response.accessToken, response.refreshToken,Date.now() + (ageInSeconds * 1000), refreshExpiresAt);
-                    authHeaders = response.accessToken ? { Authorization: `Bearer ${response.accessToken}` } : {};
+                throw new Error("Session expired - both tokens are invalid");
+            } else if (refreshToken) {
+                const refreshResponse = await tryRefreshToken(client, refreshToken);
+                if (refreshResponse?.accessToken) {
+                    setTokens(refreshResponse.accessToken, refreshResponse.refreshToken, ageInSeconds, refreshAgeInSeconds);
+                    authHeaders = { Authorization: `Bearer ${refreshResponse.accessToken}` };
                     return await requestFn(authHeaders);
                 } else {
                     redirectToLogin(client);
+                    throw new Error("Token refresh failed");
                 }
             }
         }
+        
+        // Set auth headers with current access token
         authHeaders = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
-        response = await requestFn(authHeaders);
-        if(response.status===403){
-            if (refreshToken != null) {
-                const refreshed = await tryRefreshToken(client, refreshToken);
-                if (refreshed && refreshed.accessToken) {
-                    setTokens(refreshed.accessToken, refreshed.refreshToken, Date.now() + (ageInSeconds * 1000), refreshExpiresAt);
-                    authHeaders = refreshed.accessToken ? { Authorization: `Bearer ${refreshed.accessToken}` } : {};
-                    response = await requestFn(authHeaders);
-                    if(response.status==403){
+        
+        try {
+            return await requestFn(authHeaders);
+        } catch (error) {
+            // If we get a 403 error, try to refresh token and retry
+            if (error instanceof Error && error.message.includes('HTTP error! status: 403')) {
+                if (refreshToken) {
+                    const refreshed = await tryRefreshToken(client, refreshToken);
+                    if (refreshed && refreshed.accessToken) {
+                        setTokens(refreshed.accessToken, refreshed.refreshToken, ageInSeconds, refreshAgeInSeconds);
+                        authHeaders = { Authorization: `Bearer ${refreshed.accessToken}` };
+                        return await requestFn(authHeaders);
+                    } else {
                         redirectToLogin(client);
-                        return new Response("Unauthorized", { status: 401 });
+                        throw new Error("Token refresh failed after 403 error");
                     }
+                } else {
+                    redirectToLogin(client);
+                    throw new Error("No refresh token available for retry");
                 }
-            } else {
-                redirectToLogin(client);
-                return new Response("Unauthorized", { status: 401 });
             }
+            // Re-throw other errors
+            throw error;
         }
-        return response;
     };
 }
 
@@ -54,25 +63,6 @@ function redirectToLogin(client: HttpClient) {
     const loginUrl = client.getLoginURL();
     if (loginUrl) {
         logout(loginUrl);
-    }
-}
-
-async function tryRefreshToken(client: HttpClient, refreshToken: string | null) {
-
-    const refreshUrl = client.getRefreshTokenURL();
-    if (!refreshUrl || !refreshToken) return null;
-    const response = await fetch(refreshUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ refreshToken }),
-    });
-    if (response.ok) {
-        const data = await response.json();
-        return { accessToken: data.accessToken, refreshToken: data.refreshToken };
-    } else {
-        return null;
     }
 }
 

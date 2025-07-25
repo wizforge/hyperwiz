@@ -3,3 +3,4 @@ export interface RequestConfig {
   headers?: HeadersInit;
   body?: any;
 }
+

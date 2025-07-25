@@ -1,6 +1,6 @@
 {
   "name": "hyperwiz",
-  "version": "0.0.13",
+  "version": "0.0.20",
   "description": "Next-generation TypeScript HTTP client with built-in retry, smart caching, and seamless authentication. Effortlessly handle API requests with advanced features for modern web development.",
   "author": "Parth Tyagi",
   "license": "Apache-2.0",
@@ -23,6 +23,9 @@
     "build": "tsup src/index.ts --format esm,cjs --dts --clean --out-dir dist"
   },
   "keywords": [
+    "browser",
+    "client-side",
+    "frontend",
     "http-client",
     "fetch-wrapper",
     "retry",
