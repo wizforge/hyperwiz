@@ -7,7 +7,7 @@ export function createAuthMiddleware(client: HttpClient) {
     return async function withAuth<T>(requestFn: (headers: HeadersInit) => Promise<T>): Promise<T> {
         let accessToken = getAccessToken();
         let refreshToken = getRefreshToken();
-        let ageInSeconds = parseInt(localStorage.getItem('accessToken_age') || '') || TokenAge.seconds(60, 'accessToken');
+        let ageInSeconds = parseInt(localStorage.getItem('accessToken_age') || '') || null;
         let refreshAgeInSeconds = parseInt(localStorage.getItem('refreshToken_age') || '') || null;
         let authHeaders: HeadersInit = {};
         

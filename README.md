@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://placehold.co/200x60?text=hyperwiz+logo" alt="hyperwiz logo" width="200"/>
+  <img src="https://raw.githubusercontent.com/wizforge/hyperwiz/main/image.png" alt="hyperwiz logo" width="200"/>
 </p>
 
 <h1 align="center">hyperwiz</h1>
