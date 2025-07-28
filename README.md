@@ -1,814 +1,413 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/wizforge/hyperwiz/main/image.png" alt="hyperwiz logo" width="200"/>
-</p>
+# HyperWiz 🔐
 
-<h1 align="center">hyperwiz</h1>
+A secure, lightweight HTTP client library with built-in authentication, token management, and encryption for modern web applications.
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/hyperwiz"><img src="https://img.shields.io/npm/v/hyperwiz.svg" alt="npm version"></a>
-  <a href="https://github.com/wizforge/hyperwiz/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/hyperwiz.svg" alt="license"></a>
-  <img src="https://img.shields.io/badge/TypeScript-Ready-blue.svg" alt="TypeScript ready">
-  <img src="https://img.shields.io/badge/ESM%20%26%20CJS-supported-green" alt="ESM and CJS supported">
-</p>
+## Features ✨
 
-<h3 align="center">🔥 Hyper-modern HTTP client for TypeScript & JavaScript</h3>
+- 🔐 **Secure Token Management** - AES-256 encrypted token storage
+- 🔄 **Automatic Token Refresh** - Seamless token renewal
+- 🛡️ **Authentication Middleware** - Built-in auth handling
+- 🔒 **Memory Security** - Automatic sensitive data cleanup
+- ⚡ **Lightweight** - Minimal bundle size
+- 🎯 **TypeScript Support** - Full type safety
+- 🌐 **Browser-focused** - Optimized for web applications
 
-**hyperwiz** is a modern, high-performance HTTP client built for 2025. It features automatic token refresh, smart error handling, and a clean API designed for both Node.js and browser environments.
+## Installation 📦
 
----
-
-## 📦 Installation
-
-```sh
+```bash
 npm install hyperwiz
 # or
 yarn add hyperwiz
-# or
-pnpm add hyperwiz
 ```
 
----
+## Quick Start 🚀
 
-## ⚡ Quick Start
+> **Note**: This library is designed for browser environments and uses `localStorage` for token storage.
 
-### JavaScript (Simple Usage)
+### 1. Basic Setup
 
-```js
-import { createClient } from 'hyperwiz';
-// or: const { createClient } = require('hyperwiz');
+```typescript
+import { createClient, createAuthMiddleware, setGlobalSecretKey, TokenAge } from 'hyperwiz';
 
-const client = createClient('https://api.example.com');
-
-// GET request
-const response = await client.get('/users');
-if (response.success) {
-  console.log('Users:', response.data);
-} else {
-  console.error('Error:', response.error);
-}
-
-// POST request
-const createResponse = await client.post('/users', { 
-  name: 'Alice', 
-  email: 'alice@example.com' 
+// Create HTTP client
+const client = createClient('https://api.example.com', {
+  loginUrl: '/login',
+  refreshTokenUrl: '/auth/refresh'
 });
-if (createResponse.success) {
-  console.log('New user:', createResponse.data);
-}
 
-// PUT request
-const updateResponse = await client.put('/users/123', { name: 'Alice Updated' });
+// Set your secret key (minimum 32 characters for AES-256)
+setGlobalSecretKey('your-super-secret-key-at-least-32-chars-long');
 
-// DELETE request
-const deleteResponse = await client.delete('/users/123');
+// Create auth middleware
+const withAuth = createAuthMiddleware(client, 'your-super-secret-key-at-least-32-chars-long');
 ```
 
-### TypeScript (With Type Safety)
+### 2. Store Tokens
 
-```ts
-import { createClient } from 'hyperwiz';
+```typescript
+import { setTokens, TokenAge } from 'hyperwiz';
 
-// Define your API response types
-interface User {
-  id: number;
-  email: string;
-}
+// Store both access and refresh tokens
+await setTokens(
+  'your-access-token',
+  'your-super-secret-key-at-least-32-chars-long',
+  'your-refresh-token',
+  TokenAge.hours(1),    // Access token expires in 1 hour
+  TokenAge.days(7)      // Refresh token expires in 7 days
+);
 
-interface CreateUserRequest {
+// Or store tokens individually
+await setAccessToken('your-access-token', 'your-secret-key', TokenAge.hours(1));
+await setRefreshToken('your-refresh-token', 'your-secret-key', TokenAge.days(7));
+```
+
+### 3. Make Authenticated Requests
+
+```typescript
+// Define your data types for better type safety
+interface UserProfile {
+  id: string;
   name: string;
   email: string;
 }
 
-const client = createClient('https://api.example.com');
+// Simple GET request with auth
+const userData = await withAuth((headers) => client.get<UserProfile>('/user/profile', headers));
 
-// GET request with type safety
-const response = await client.get<User[]>('/users');
-if (response.success) {
-  const users: User[] = response.data;
-  console.log('Users:', users);
-} else {
-  console.error('Error:', response.error);
-}
-
-// POST request with typed request and response
-const userData: CreateUserRequest = {
-  name: 'Alice',
-  email: 'alice@example.com'
-};
-const createResponse = await client.post<User>('/users', userData);
-if (createResponse.success) {
-  const newUser: User = createResponse.data;
-  console.log('New user:', newUser);
-}
-```
-
----
-
-## 🔒 Authenticated Requests
-
-hyperwiz supports token-based authentication with automatic token refresh. Use the `createAuthMiddleware` to wrap your requests:
-
-### JavaScript (Simple Usage)
-
-```js
-import { createClient, createAuthMiddleware, setTokens } from 'hyperwiz';
-
-const client = createClient('https://api.example.com');
-const withAuth = createAuthMiddleware(client);
-
-// Set tokens (e.g., after login)
-setTokens('access-token', 'refresh-token');
-
-// Authenticated GET request
-const userData = await withAuth((headers) => client.get('/me', headers));
+// Check the response with proper TypeScript types
 if (userData.success) {
-  console.log('User data:', userData.data);
-}
-
-// Authenticated POST request with body
-const newItem = await withAuth((headers) => 
-  client.post('/items', { name: 'apple', price: 20 }, headers)
-);
-
-// Authenticated PUT request
-const updatedUser = await withAuth((headers) =>
-  client.put('/users/123', { name: 'John Updated' }, headers)
-);
-
-// Authenticated DELETE request
-const result = await withAuth((headers) => client.delete('/items/456', headers));
-```
-
-### TypeScript (With Type Safety)
-
-```ts
-import { createClient, createAuthMiddleware, setTokens } from 'hyperwiz';
-
-// Define your API types
-interface User {
-  id: number;
-  name: string;
-  email: string;
-}
-
-interface Item {
-  id: number;
-  name: string;
-  price: number;
-}
-
-interface CreateItemRequest {
-  name: string;
-  price: number;
-}
-
-const client = createClient('https://api.example.com');
-const withAuth = createAuthMiddleware(client);
-
-// Set tokens (e.g., after login)
-setTokens('access-token', 'refresh-token');
-
-// Authenticated GET request with type safety
-const userData = await withAuth((headers) => 
-  client.get<User>('/me', headers)
-);
-if (userData.success) {
-  const user: User = userData.data;
-  console.log('User:', user);
-}
-
-// Authenticated POST request with typed request and response
-const itemData: CreateItemRequest = { name: 'apple', price: 20 };
-const newItem = await withAuth((headers) => 
-  client.post<Item>('/items', itemData, headers)
-);
-if (newItem.success) {
-  const item: Item = newItem.data;
-  console.log('Created item:', item);
-}
-```
-
-**How it works:**
-- The `withAuth` function automatically attaches the access token to your requests
-- If the access token is expired, it automatically refreshes it using the refresh token
-- If both tokens are expired, it redirects to the login URL (if set via `client.setLoginPath(url)`)
-- Pass the `headers` argument from the middleware into your client method
-- The middleware returns the same `ApiResponse<T>` format as direct client methods
-
----
-
-## 🪪 Token Management
-
-hyperwiz provides utility functions for managing JWT tokens:
-
-### JavaScript
-
-```js
-import {
-  setTokens,
-  setAccessToken,
-  setRefreshToken,
-  getAccessToken,
-  getRefreshToken,
-  isAccessTokenExpired,
-  isRefreshTokenExpired,
-  getAccessExpiresAt,
-  logout,
-  TokenAge
-} from 'hyperwiz';
-
-// Set tokens with optional expiry (in seconds)
-setTokens(
-  'access-token', 
-  'refresh-token', 
-  TokenAge.hours(2, "accessToken"), 
-  TokenAge.days(7, "refreshToken")
-);
-
-// Set individual tokens
-setAccessToken('new-access-token', TokenAge.hours(1, "accessToken"));
-setRefreshToken('new-refresh-token', TokenAge.days(30, "refreshToken"));
-
-// Get current tokens
-const accessToken = getAccessToken();
-const refreshToken = getRefreshToken();
-
-// Get expiry timestamps
-const accessExpiry = getAccessExpiresAt();
-
-// Check if tokens are expired
-if (isAccessTokenExpired()) {
-  console.log('Access token is expired');
-}
-
-if (isRefreshTokenExpired()) {
-  console.log('Refresh token is expired');
-}
-
-// Logout and clear tokens
-logout();
-// or logout with redirect
-logout('/login');
-```
-
-### TypeScript
-
-```ts
-import {
-  setTokens,
-  setAccessToken,
-  setRefreshToken,
-  getAccessToken,
-  getRefreshToken,
-  isAccessTokenExpired,
-  isRefreshTokenExpired,
-  getAccessExpiresAt,
-  logout,
-  TokenAge
-} from 'hyperwiz';
-
-// Set tokens with optional expiry (in seconds)
-setTokens(
-  'access-token', 
-  'refresh-token', 
-  TokenAge.hours(2, "accessToken"), 
-  TokenAge.days(7, "refreshToken")
-);
-
-// Set individual tokens
-setAccessToken('new-access-token', TokenAge.hours(1, "accessToken"));
-setRefreshToken('new-refresh-token', TokenAge.days(30, "refreshToken"));
-
-// Get current tokens (returns string | null)
-const accessToken: string | null = getAccessToken();
-const refreshToken: string | null = getRefreshToken();
-
-// Get expiry timestamps (returns number | null)
-const accessExpiry: number | null = getAccessExpiresAt();
-
-// Check if tokens are expired (returns boolean)
-const isAccessExpired: boolean = isAccessTokenExpired();
-const isRefreshExpired: boolean = isRefreshTokenExpired();
-
-if (isAccessExpired) {
-  console.log('Access token is expired');
-}
-
-if (isRefreshExpired) {
-  console.log('Refresh token is expired');
-}
-
-// Logout and clear tokens
-logout();
-// or logout with redirect
-logout('/login');
-```
-
-### TokenAge Utilities
-
-The `TokenAge` utility provides convenient methods for setting token expiry:
-
-```js
-import { TokenAge } from 'hyperwiz';
-
-// Time calculation methods
-TokenAge.seconds(30, "accessToken")    // 30 seconds
-TokenAge.minutes(15, "accessToken")    // 15 minutes 
-TokenAge.hours(2, "accessToken")       // 2 hours
-TokenAge.days(7, "refreshToken")       // 7 days
-TokenAge.months(1, "refreshToken")     // 1 month (30 days)
-TokenAge.years(1, "refreshToken")      // 1 year (365 days)
-
-// Convenience methods (return seconds, no storage)
-TokenAge.minute()   // 60 seconds
-TokenAge.hour()     // 3600 seconds  
-TokenAge.day()      // 86400 seconds
-TokenAge.week()     // 604800 seconds
-TokenAge.month()    // 2592000 seconds (30 days)
-TokenAge.year()     // 31536000 seconds (365 days)
-```
-
----
-
-## 🚨 Error Handling
-
-hyperwiz uses a consistent `ApiResponse<T>` format for all HTTP methods:
-
-```ts
-type ApiResponse<T> = 
-  | { success: true; data: T }
-  | { success: false; status?: number; error: string };
-```
-
-### JavaScript (Proper Response Handling)
-
-```js
-import { createClient } from 'hyperwiz';
-
-const client = createClient('https://api.example.com');
-
-// Handle success/error responses
-const response = await client.get('/users');
-if (response.success) {
-  console.log('Users:', response.data);
+  console.log('User data:', userData.data); // TypeScript knows this is UserProfile
 } else {
-  console.error('Error:', response.error);
-  
-  // Handle different error types
-  if (response.error.includes('Network error')) {
-    alert('Unable to connect. Please check your internet connection.');
-    
-  } else if (response.error === 'Unauthorized access') {
-    window.location.href = '/login';
-    
-  } else if (response.error === 'Token refresh failed') {
-    localStorage.clear();
-    window.location.href = '/login';
-    
-  } else if (response.status) {
-    // Handle HTTP status codes
-    switch (response.status) {
-      case 400:
-        alert(`Bad Request: ${response.error}`);
-        break;
-      case 404:
-        alert('Resource not found');
-        break;
-      case 500:
-        alert('Server error. Please try again later.');
-        break;
-      default:
-        alert(`HTTP ${response.status}: ${response.error}`);
-    }
-  }
-}
-```
-
-### TypeScript (Typed Error Handling)
-
-```ts
-import { createClient } from 'hyperwiz';
-
-interface User {
-  id: number;
-  name: string;
-  email: string;
+  console.error('Request failed:', userData.error); // TypeScript knows this is string
+  // Handle request failure
 }
 
-const client = createClient('https://api.example.com');
+// POST request with auth
+const newPost = await withAuth(async (headers) => {
+  return await client.post('/posts', { title: 'Hello World' }, headers);
+});
 
-// Handle typed responses
-const response = await client.get<User[]>('/users');
-if (response.success) {
-  // TypeScript knows response.data is User[]
-  const users: User[] = response.data;
-  console.log('Users:', users);
+if (newPost.success) {
+  console.log('Created post:', newPost.data);
 } else {
-  // TypeScript knows response.error is string and response.status is number | undefined
-  console.error('Error:', response.error);
-  
-  if (response.error.includes('Network error')) {
-    alert('Unable to connect. Please check your internet connection.');
-    
-  } else if (response.error === 'Unauthorized access') {
-    window.location.href = '/login';
-    
-  } else if (response.error === 'Token refresh failed') {
-    localStorage.clear();
-    window.location.href = '/login';
-    
-  } else if (response.status) {
-    switch (response.status) {
-      case 400:
-        alert(`Bad Request: ${response.error}`);
-        break;
-      case 404:
-        alert('Resource not found');
-        break;
-      case 500:
-        alert('Server error. Please try again later.');
-        break;
-      default:
-        alert(`HTTP ${response.status}: ${response.error}`);
-    }
-  }
+  console.error('Failed to create post:', newPost.error);
 }
 ```
 
-### Common Error Responses
-
-| Error Type | Response Format | How to Handle |
-|------------|----------------|---------------|
-| **Network Error** | `{ success: false, error: "Network error: ..." }` | Show connection message |
-| **Unauthorized** | `{ success: false, status: 401, error: "Unauthorized access" }` | Redirect to login |
-| **Token Refresh Failed** | `{ success: false, status: 403, error: "Token refresh failed" }` | Clear storage, redirect to login |
-| **Bad Request** | `{ success: false, status: 400, error: "..." }` | Show validation errors |
-| **Not Found** | `{ success: false, status: 404, error: "..." }` | Show "not found" message |
-| **Server Error** | `{ success: false, status: 500, error: "..." }` | Show "try again later" |
-| **Invalid JSON** | `{ success: false, status?: number, error: "Invalid JSON response" }` | Show "invalid response" message |
-
-### Reusable Error Handler
-
-Create a simple, reusable error handler:
-
-#### JavaScript
-
-```js
-function handleApiError(response) {
-  if (response.success) return true;
-  
-  const { error, status } = response;
-  
-  if (error.includes('Network error')) {
-    showNotification('Connection problem. Please try again.', 'error');
-    return false;
-  }
-  
-  if (error === 'Unauthorized access') {
-    window.location.href = '/login';
-    return false;
-  }
-  
-  if (error === 'Token refresh failed') {
-    localStorage.clear();
-    window.location.href = '/login';
-    return false;
-  }
-  
-  if (status) {
-    if (status >= 400 && status < 500) {
-      showNotification(`Request error: ${error}`, 'error');
-    } else if (status >= 500) {
-      showNotification('Server error. Please try again later.', 'error');
-    }
-    return false;
-  }
-  
-  // Unknown error
-  showNotification('An unexpected error occurred.', 'error');
-  return false;
-}
-
-// Usage
-async function fetchUsers() {
-  const response = await client.get('/users');
-  if (handleApiError(response)) {
-    return response.data;
-  }
-  return null;
-}
-
-function showNotification(message, type) {
-  console.log(`[${type.toUpperCase()}] ${message}`);
-  // Implement your notification system here
-}
-```
-
-#### TypeScript
-
-```ts
-type ApiResponse<T> = 
-  | { success: true; data: T }
-  | { success: false; status?: number; error: string };
-
-function handleApiError<T>(response: ApiResponse<T>): response is { success: true; data: T } {
-  if (response.success) return true;
-  
-  const { error, status } = response;
-  
-  if (error.includes('Network error')) {
-    showNotification('Connection problem. Please try again.', 'error');
-    return false;
-  }
-  
-  if (error === 'Unauthorized access') {
-    window.location.href = '/login';
-    return false;
-  }
-  
-  if (error === 'Token refresh failed') {
-    localStorage.clear();
-    window.location.href = '/login';
-    return false;
-  }
-  
-  if (status) {
-    if (status >= 400 && status < 500) {
-      showNotification(`Request error: ${error}`, 'error');
-    } else if (status >= 500) {
-      showNotification('Server error. Please try again later.', 'error');
-    }
-    return false;
-  }
-  
-  // Unknown error
-  showNotification('An unexpected error occurred.', 'error');
-  return false;
-}
-
-// Usage with type narrowing
-async function fetchUsers(): Promise<User[] | null> {
-  const response = await client.get<User[]>('/users');
-  if (handleApiError(response)) {
-    // TypeScript knows response.data is User[]
-    return response.data;
-  }
-  return null;
-}
-
-function showNotification(message: string, type: 'error' | 'success' | 'warning'): void {
-  console.log(`[${type.toUpperCase()}] ${message}`);
-  // Implement your notification system here
-}
-```
-
-### Error Handling with Auth Middleware
-
-The authentication middleware returns the same `ApiResponse<T>` format, but may throw errors for auth-related issues:
-
-#### JavaScript
-
-```js
-import { createClient, createAuthMiddleware } from 'hyperwiz';
-
-const client = createClient('https://api.example.com');
-const withAuth = createAuthMiddleware(client);
-
-try {
-  // Auth middleware may throw for session issues
-  const response = await withAuth((headers) => client.get('/users', headers));
-  
-  if (response.success) {
-    console.log('Users:', response.data);
-  } else {
-    // Handle regular API errors
-    handleApiError(response);
-  }
-} catch (error) {
-  // Handle auth middleware errors
-  const message = error.message;
-  
-  if (message.includes('Session expired') || message.includes('Token refresh failed')) {
-    alert('Your session has expired. Please log in again.');
-    window.location.href = '/login';
-  } else {
-    console.error('Unexpected auth error:', message);
-  }
-}
-```
-
-#### TypeScript
-
-```ts
-import { createClient, createAuthMiddleware } from 'hyperwiz';
-
-interface User {
-  id: number;
-  name: string;
-  email: string;
-}
-
-const client = createClient('https://api.example.com');
-const withAuth = createAuthMiddleware(client);
-
-try {
-  // Auth middleware may throw for session issues
-  const response = await withAuth((headers) => 
-    client.get<User[]>('/users', headers)
-  );
-  
-  if (response.success) {
-    const users: User[] = response.data;
-    console.log('Users:', users);
-  } else {
-    // Handle regular API errors
-    handleApiError(response);
-  }
-} catch (error) {
-  // Handle auth middleware errors
-  const message = (error as Error).message;
-  
-  if (message.includes('Session expired') || message.includes('Token refresh failed')) {
-    alert('Your session has expired. Please log in again.');
-    window.location.href = '/login';
-  } else {
-    console.error('Unexpected auth error:', message);
-  }
-}
-```
-
----
-
-## ⚙️ API Reference
-
-### Core Functions
-
-| Function / Method                        | Description                                                      |
-|------------------------------------------|------------------------------------------------------------------|
-| `createClient(baseUrl)`                  | Create a new HTTP client instance                                 |
-| `client.get<T>(path, headers?)`          | Perform GET request, returns `ApiResponse<T>`                    |
-| `client.post<T>(path, body, headers?)`   | Perform POST request, returns `ApiResponse<T>`                   |
-| `client.put<T>(path, body, headers?)`    | Perform PUT request, returns `ApiResponse<T>`                    |
-| `client.delete<T>(path, headers?)`       | Perform DELETE request, returns `ApiResponse<T>`                 |
-| `client.patch<T>(path, body, headers?)`  | Perform PATCH request, returns `ApiResponse<T>`                  |
-| `client.setLoginPath(url)`               | Set login redirect URL for auth failures                         |
-| `client.setRefreshTokenPath(url)`        | Set refresh token endpoint URL                                   |
-| `createAuthMiddleware(client)`           | Creates a withAuth() wrapper for authenticated requests          |
-
-### Token Management
-
-| Function                                 | Description                                                      |
-|------------------------------------------|------------------------------------------------------------------|
-| `setTokens(access, refresh?, accessAge?, refreshAge?)` | Set JWT tokens with optional expiry (seconds)        |
-| `setAccessToken(token, ageInSeconds?)`   | Set access token with optional expiry                           |
-| `setRefreshToken(token, ageInSeconds?)`  | Set refresh token with optional expiry                          |
-| `getAccessToken()`                       | Get current access token (returns `string \| null`)             |
-| `getRefreshToken()`                      | Get current refresh token (returns `string \| null`)            |
-| `getAccessExpiresAt()`                   | Get access token expiry timestamp (returns `number \| null`)    |
-| `isAccessTokenExpired()`                 | Check if access token is expired (returns `boolean`)            |
-| `isRefreshTokenExpired()`                | Check if refresh token is expired (returns `boolean`)           |
-| `logout(redirectUrl?)`                   | Clear all tokens and optionally redirect                        |
-
-### TokenAge Utilities
-
-| Function                                 | Description                                                      |
-|------------------------------------------|------------------------------------------------------------------|
-| `TokenAge.seconds(value, tokenName)`     | Calculate seconds and store age preference                       |
-| `TokenAge.minutes(value, tokenName)`     | Calculate minutes and store age preference                       |
-| `TokenAge.hours(value, tokenName)`       | Calculate hours and store age preference                         |
-| `TokenAge.days(value, tokenName)`        | Calculate days and store age preference                          |
-| `TokenAge.months(value, tokenName)`      | Calculate months (30 days) and store age preference             |
-| `TokenAge.years(value, tokenName)`       | Calculate years (365 days) and store age preference             |
-| `TokenAge.minute()`                      | Returns 60 (convenience method)                                 |
-| `TokenAge.hour()`                        | Returns 3600 (convenience method)                               |
-| `TokenAge.day()`                         | Returns 86400 (convenience method)                              |
-| `TokenAge.week()`                        | Returns 604800 (convenience method)                             |
-| `TokenAge.month()`                       | Returns 2592000 (convenience method)                            |
-| `TokenAge.year()`                        | Returns 31536000 (convenience method)                           |
-
----
-
-## 📝 TypeScript Types
-
-### Core Types
-
-```ts
-// Request configuration (used internally)
-export interface RequestConfig {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-  headers?: HeadersInit;
-  body?: any;
-}
-
-// API response format (returned by all HTTP methods)
-type ApiResponse<T> = 
-  | { success: true; data: T }
-  | { success: false; status?: number; error: string };
-```
-
-### Usage Examples
-
-**For TypeScript users:** Define your own API response types based on your server's API:
-
-```ts
-// Define your API types
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  createdAt: string;
-}
-
-interface CreateUserRequest {
-  name: string;
-  email: string;
-}
-
-interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-}
-
-// Use with typed requests
-const response = await client.get<User[]>('/users');
-if (response.success) {
-  const users: User[] = response.data;
-}
-
-const paginatedResponse = await client.get<PaginatedResponse<User>>('/users?page=1');
-if (paginatedResponse.success) {
-  const { data, total, page, limit } = paginatedResponse.data;
-}
-
-// Create user with typed request
-const userData: CreateUserRequest = { name: 'Alice', email: 'alice@example.com' };
-const createResponse = await client.post<User>('/users', userData);
-if (createResponse.success) {
-  const newUser: User = createResponse.data;
-}
-```
-
----
-
-## 🔧 Advanced Configuration
-
-### Setting Login and Refresh URLs
-
-```js
-import { createClient } from 'hyperwiz';
-
-const client = createClient('https://api.example.com');
-
-// Set login redirect URL (used when auth fails)
-client.setLoginPath('/login');
-
-// Set refresh token endpoint (used for automatic token refresh)
-client.setRefreshTokenPath('/auth/refresh');
-```
+## API Reference 📚
 
 ### Client Configuration
 
-```js
-// Create client with base URL
-const client = createClient('https://api.example.com');
+#### `createClient(baseUrl, config?)`
 
-// All requests will be relative to the base URL
-await client.get('/users');        // GET https://api.example.com/users
-await client.post('/posts', data); // POST https://api.example.com/posts
+Creates an HTTP client instance.
+
+```typescript
+interface ClientConfig {
+  loginUrl?: string;           // Login page URL for redirects
+  refreshTokenUrl?: string;    // Token refresh endpoint
+  cookieDomain?: string;       // Cookie domain (future use)
+  cookiePath?: string;         // Cookie path (future use)
+  cookieSecure?: boolean;      // Secure cookies (future use)
+  cookieSameSite?: 'Strict' | 'Lax' | 'None'; // SameSite policy (future use)
+}
 ```
 
----
+### Token Management
 
-## 📦 Module Support
+#### `setGlobalSecretKey(secretKey: string)`
 
-hyperwiz supports both ESM and CommonJS:
+Sets the global secret key for token encryption/decryption.
 
-**ESM (Recommended):**
-```js
-import { createClient, setTokens, TokenAge } from 'hyperwiz';
+```typescript
+setGlobalSecretKey('your-super-secret-key-at-least-32-chars-long');
 ```
 
-**CommonJS:**
-```js
-const { createClient, setTokens, TokenAge } = require('hyperwiz');
+#### `setTokens(accessToken, secretKey, refreshToken?, accessAge?, refreshAge?)`
+
+Stores both access and refresh tokens with expiration times.
+
+```typescript
+await setTokens(
+  'access-token',
+  'secret-key',
+  'refresh-token',
+  TokenAge.hours(1),    // Access token age
+  TokenAge.days(7)      // Refresh token age
+);
 ```
 
----
+#### `setAccessToken(token, secretKey, ageInSeconds?)`
 
-## 🪪 License
+Stores only the access token.
 
-Licensed under the Apache License 2.0.
+```typescript
+await setAccessToken('access-token', 'secret-key', TokenAge.hours(1));
+```
 
----
+#### `setRefreshToken(token, secretKey, ageInSeconds?)`
 
-## 🔗 Related Links
+Stores only the refresh token.
 
-- **GitHub:** [https://github.com/wizforge/hyperwiz](https://github.com/wizforge/hyperwiz)
-- **npm:** [https://www.npmjs.com/package/hyperwiz](https://www.npmjs.com/package/hyperwiz)
-- **Homepage:** [https://wizforge.dev/hyperwiz](https://wizforge.dev/hyperwiz)
+```typescript
+await setRefreshToken('refresh-token', 'secret-key', TokenAge.days(7));
+```
 
----
+#### `getAccessToken(): Promise<string | null>`
 
-<p align="center">Made with ❤️ for modern web development</p>
+Retrieves the decrypted access token.
+
+```typescript
+const token = await getAccessToken();
+```
+
+#### `getRefreshToken(): Promise<string | null>`
+
+Retrieves the decrypted refresh token.
+
+```typescript
+const token = await getRefreshToken();
+```
+
+#### `isAccessTokenExpired(): boolean`
+
+Checks if the access token has expired.
+
+```typescript
+if (isAccessTokenExpired()) {
+  // Handle expired token
+}
+```
+
+#### `isRefreshTokenExpired(): boolean`
+
+Checks if the refresh token has expired.
+
+```typescript
+if (isRefreshTokenExpired()) {
+  // Handle expired refresh token
+}
+```
+
+#### `logout(redirectUrl?)`
+
+Clears all tokens and optionally redirects to login.
+
+```typescript
+logout('/login'); // Redirects to login page
+logout();         // Just clears tokens
+```
+
+### Time Utilities
+
+#### `TokenAge`
+
+Convenient time duration helpers.
+
+```typescript
+// Duration methods
+TokenAge.seconds(30)    // 30 seconds
+TokenAge.minutes(5)     // 5 minutes
+TokenAge.hours(2)       // 2 hours
+TokenAge.days(7)        // 7 days
+TokenAge.weeks(2)       // 2 weeks
+TokenAge.months(1)      // 1 month
+TokenAge.years(1)       // 1 year
+
+// Convenience methods
+TokenAge.minute()       // 60 seconds
+TokenAge.hour()         // 3600 seconds
+TokenAge.day()          // 86400 seconds
+TokenAge.week()         // 604800 seconds
+TokenAge.month()        // 2592000 seconds
+TokenAge.year()         // 31536000 seconds
+```
+
+### Authentication Middleware
+
+#### `createAuthMiddleware(client, secretKey?)`
+
+Creates authentication middleware that handles token refresh automatically.
+
+```typescript
+const withAuth = createAuthMiddleware(client, 'your-secret-key');
+
+// Use with any async function that needs auth headers
+const result = await withAuth(async (headers) => {
+  // Your API call here
+  return await client.get('/protected-endpoint', headers);
+});
+
+// Check the response
+if (result.success) {
+  console.log('Success:', result.data);
+} else {
+  console.error('Request failed:', result.error);
+  // Handle request failure
+}
+```
+
+**Note:** The middleware uses the same response format as HttpClient:
+```typescript
+type ApiResponse<T> =
+  | { success: true; data: T }
+  | { success: false; status?: number; error: string };
+```
+
+### HTTP Client Methods
+
+#### `client.get(url, headers?)`
+
+```typescript
+const response = await client.get('/users', { 'Custom-Header': 'value' });
+```
+
+#### `client.post(url, body, headers?)`
+
+```typescript
+const response = await client.post('/users', { name: 'John' }, headers);
+```
+
+#### `client.put(url, body, headers?)`
+
+```typescript
+const response = await client.put('/users/1', { name: 'Jane' }, headers);
+```
+
+#### `client.patch(url, body, headers?)`
+
+```typescript
+const response = await client.patch('/users/1', { name: 'Jane' }, headers);
+```
+
+#### `client.delete(url, headers?)`
+
+```typescript
+const response = await client.delete('/users/1', headers);
+```
+
+## Complete Example 📝
+
+```typescript
+import { 
+  createClient, 
+  createAuthMiddleware, 
+  setGlobalSecretKey, 
+  setTokens, 
+  TokenAge 
+} from 'hyperwiz';
+
+// 1. Setup
+const client = createClient('https://api.example.com', {
+  loginUrl: '/login',
+  refreshTokenUrl: '/auth/refresh'
+});
+
+setGlobalSecretKey('your-super-secret-key-at-least-32-chars-long');
+const withAuth = createAuthMiddleware(client, 'your-super-secret-key-at-least-32-chars-long');
+
+// 2. Login and store tokens
+async function login(email: string, password: string) {
+  const response = await client.post('/auth/login', { email, password });
+  
+  if (response.success) {
+    await setTokens(
+      response.data.accessToken,
+      'your-super-secret-key-at-least-32-chars-long',
+      response.data.refreshToken,
+      TokenAge.hours(1),
+      TokenAge.days(7)
+    );
+    return response.data;
+  }
+  
+  throw new Error(response.error);
+}
+
+// 3. Make authenticated requests
+async function getUserProfile() {
+  return await withAuth(async (headers) => {
+    const response = await client.get('/user/profile', headers);
+    return response.data;
+  });
+}
+
+async function createPost(title: string, content: string) {
+  return await withAuth(async (headers) => {
+    const response = await client.post('/posts', { title, content }, headers);
+    return response.data;
+  });
+}
+
+// 4. Usage
+async function main() {
+  try {
+    // Login
+    await login('user@example.com', 'password123');
+    
+    // Get user profile
+    const profile = await getUserProfile();
+    console.log('Profile:', profile);
+    
+    // Create a post
+    const post = await createPost('Hello World', 'This is my first post!');
+    console.log('Created post:', post);
+    
+  } catch (error) {
+    console.error('Error:', error);
+  }
+}
+```
+
+## Security Features 🔒
+
+### Token Storage
+- **localStorage encryption** - Tokens stored encrypted in browser localStorage
+- **AES-256-GCM** encryption for all tokens
+- **PBKDF2** key derivation with 600,000 iterations
+- **Secure salt** for key derivation
+- **Memory protection** - sensitive data automatically cleared
+
+### Automatic Token Refresh
+- **Seamless refresh** - handles token expiration automatically
+- **Retry logic** - retries failed requests after token refresh
+- **Fallback handling** - redirects to login when refresh fails
+
+### Error Handling
+- **Comprehensive validation** - input validation for all parameters
+- **Descriptive errors** - clear error messages for debugging
+- **Graceful degradation** - handles network and crypto errors
+
+### Browser Security
+- **Same-origin policy** - Tokens only accessible from same domain
+- **HTTPS recommended** - Use HTTPS in production for secure token transmission
+- **Session management** - Automatic cleanup on logout
+
+## Environment Support 🌐
+
+### Browser Support ✅
+- **Modern browsers** with Web Crypto API support
+- **Chrome 37+**
+- **Firefox 34+**
+- **Safari 11+**
+- **Edge 12+**
+
+### Node.js Support ❌
+**Currently not supported** - This library uses `localStorage` for token storage, which is only available in browser environments.
+
+For Node.js applications, consider:
+- Using a different storage mechanism (files, databases)
+- Implementing a custom storage adapter
+- Using browser-based authentication flows
+
+## License 📄
+
+Apache License 2.0 - see [LICENSE](LICENSE) file for details.
+
+## Contributing 🤝
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Support 💬
+
+If you have any questions or need help, please open an issue on GitHub.

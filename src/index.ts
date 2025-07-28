@@ -15,7 +15,25 @@
 */
 
 export { createClient } from './utils/createClient';
+export type { ClientConfig } from './utils/createClient';
 export type { RequestConfig } from './types/index';
 export { createAuthMiddleware } from './middleware/AuthMiddleware';
-export { logout } from './core/TokenManager';
-export { setAccessToken, setRefreshToken, setTokens ,getAccessToken,getRefreshToken,isAccessTokenExpired,isRefreshTokenExpired,getAccessExpiresAt,TokenAge} from './core/TokenManager';
+
+// Export ApiResponse type for TypeScript users
+export type ApiResponse<T> = 
+  | { success: true; data: T }
+  | { success: false; status?: number; error: string };
+export { 
+    logout, 
+    setAccessToken, 
+    setRefreshToken, 
+    setTokens,
+    setGlobalSecretKey,
+    getAccessToken,
+    getRefreshToken,
+    isAccessTokenExpired,
+    isRefreshTokenExpired,
+    getAccessExpiresAt,
+    getRefreshExpiresAt,
+    TokenAge
+} from './core/TokenManager';
