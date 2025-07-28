@@ -17,6 +17,20 @@ type ApiResponse<T> =
   | { success: true; data: T }
   | { success: false; status?: number; error: string };
 
+// Helper function to calculate refresh token expiration time
+function calculateRefreshTokenExpiration(shouldUpdate: boolean, newAgeInSeconds: number | null, existingExpiresAt: number | null): number | null {
+    if (shouldUpdate && newAgeInSeconds) {
+        // If we should update and have a new age, calculate new expiration
+        return Date.now() + (newAgeInSeconds * 1000);
+    } else if (existingExpiresAt) {
+        // If we shouldn't update but have existing expiration, preserve it
+        return existingExpiresAt;
+    } else {
+        // If no existing expiration and no update, return null
+        return null;
+    }
+}
+
 export function createAuthMiddleware(client: HttpClient, secretKey?: string) {
     return async function withAuth<T>(requestFn: (headers: HeadersInit) => Promise<ApiResponse<T>>): Promise<ApiResponse<T>> {
         // Set global secret key if provided
@@ -47,13 +61,38 @@ export function createAuthMiddleware(client: HttpClient, secretKey?: string) {
                 try {
                     const refreshResponse = await tryRefreshToken(client, refreshToken);
                     if (refreshResponse?.accessToken && secretKey) {
+                        // Only update access token expiration, preserve refresh token expiration
+                        // If server returns a new refresh token, use it; otherwise keep the existing one
+                        const newRefreshToken = refreshResponse.refreshToken || refreshToken;
+                        
+                        // If server returned a new refresh token, it should have its own expiration
+                        // If server didn't return a new refresh token, don't update the expiration
+                        const shouldUpdateRefreshExpiration = refreshResponse.refreshToken && refreshResponse.refreshToken !== refreshToken;
+                        
+                        // Ensure we always pass a valid refresh token (existing one if no new one provided)
+                        const refreshTokenToUse = newRefreshToken || refreshToken;
+                        
+                        // Get existing refresh token expiration time
+                        const existingRefreshExpiresAt = getRefreshExpiresAt();
+                        
+                        // Calculate the correct refresh token expiration time
+                        const calculatedRefreshExpiration = calculateRefreshTokenExpiration(
+                            shouldUpdateRefreshExpiration, 
+                            refreshAgeInSeconds, 
+                            existingRefreshExpiresAt
+                        );
+                        
                         await setTokens(
                             refreshResponse.accessToken, 
                             secretKey, 
-                            refreshResponse.refreshToken, 
+                            refreshTokenToUse, 
                             ageInSeconds, 
-                            refreshAgeInSeconds
+                            shouldUpdateRefreshExpiration ? refreshAgeInSeconds : null
                         );
+                        // Update refresh token expiration in localStorage if we calculated a new one
+                        if (calculatedRefreshExpiration) {
+                            localStorage.setItem('refreshExpiresAt', calculatedRefreshExpiration.toString());
+                        }
                         authHeaders = { Authorization: `Bearer ${refreshResponse.accessToken}` };
                         return await requestFn(authHeaders);
                     } else {
@@ -79,13 +118,38 @@ export function createAuthMiddleware(client: HttpClient, secretKey?: string) {
                 try {
                     const refreshResponse = await tryRefreshToken(client, refreshToken);
                     if (refreshResponse?.accessToken && secretKey) {
+                        // Only update access token expiration, preserve refresh token expiration
+                        // If server returns a new refresh token, use it; otherwise keep the existing one
+                        const newRefreshToken = refreshResponse.refreshToken || refreshToken;
+                        
+                        // If server returned a new refresh token, it should have its own expiration
+                        // If server didn't return a new refresh token, don't update the expiration
+                        const shouldUpdateRefreshExpiration = refreshResponse.refreshToken && refreshResponse.refreshToken !== refreshToken;
+                        
+                        // Ensure we always pass a valid refresh token (existing one if no new one provided)
+                        const refreshTokenToUse = newRefreshToken || refreshToken;
+                        
+                        // Get existing refresh token expiration time
+                        const existingRefreshExpiresAt = getRefreshExpiresAt();
+                        
+                        // Calculate the correct refresh token expiration time
+                        const calculatedRefreshExpiration = calculateRefreshTokenExpiration(
+                            shouldUpdateRefreshExpiration, 
+                            refreshAgeInSeconds, 
+                            existingRefreshExpiresAt
+                        );
+                        
                         await setTokens(
                             refreshResponse.accessToken, 
                             secretKey, 
-                            refreshResponse.refreshToken, 
+                            refreshTokenToUse, 
                             ageInSeconds, 
-                            refreshAgeInSeconds
+                            shouldUpdateRefreshExpiration ? refreshAgeInSeconds : null
                         );
+                        // Update refresh token expiration in localStorage if we calculated a new one
+                        if (calculatedRefreshExpiration) {
+                            localStorage.setItem('refreshExpiresAt', calculatedRefreshExpiration.toString());
+                        }
                         authHeaders = { Authorization: `Bearer ${refreshResponse.accessToken}` };
                         return await requestFn(authHeaders);
                     } else {
@@ -120,13 +184,38 @@ export function createAuthMiddleware(client: HttpClient, secretKey?: string) {
                     try {
                         const refreshed = await tryRefreshToken(client, refreshToken);
                         if (refreshed && refreshed.accessToken) {
+                            // Only update access token expiration, preserve refresh token expiration
+                            // If server returns a new refresh token, use it; otherwise keep the existing one
+                            const newRefreshToken = refreshed.refreshToken || refreshToken;
+                            
+                            // If server returned a new refresh token, it should have its own expiration
+                            // If server didn't return a new refresh token, don't update the expiration
+                            const shouldUpdateRefreshExpiration = refreshed.refreshToken && refreshed.refreshToken !== refreshToken;
+                            
+                            // Ensure we always pass a valid refresh token (existing one if no new one provided)
+                            const refreshTokenToUse = newRefreshToken || refreshToken;
+                            
+                            // Get existing refresh token expiration time
+                            const existingRefreshExpiresAt = getRefreshExpiresAt();
+                            
+                            // Calculate the correct refresh token expiration time
+                            const calculatedRefreshExpiration = calculateRefreshTokenExpiration(
+                                shouldUpdateRefreshExpiration, 
+                                refreshAgeInSeconds, 
+                                existingRefreshExpiresAt
+                            );
+                            
                             await setTokens(
                                 refreshed.accessToken, 
                                 secretKey, 
-                                refreshed.refreshToken, 
+                                refreshTokenToUse, 
                                 ageInSeconds, 
-                                refreshAgeInSeconds
+                                shouldUpdateRefreshExpiration ? refreshAgeInSeconds : null
                             );
+                            // Update refresh token expiration in localStorage if we calculated a new one
+                            if (calculatedRefreshExpiration) {
+                                localStorage.setItem('refreshExpiresAt', calculatedRefreshExpiration.toString());
+                            }
                             authHeaders = { Authorization: `Bearer ${refreshed.accessToken}` };
                             return await requestFn(authHeaders);
                         } else {
