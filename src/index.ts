@@ -14,26 +14,27 @@
   limitations under the License.
 */
 
-export { createClient } from './utils/createClient';
+export { 
+  createClient, 
+  createPublicClient
+} from './utils/createClient';
 export type { ClientConfig } from './utils/createClient';
-export type { RequestConfig } from './types/index';
-export { createAuthMiddleware } from './middleware/AuthMiddleware';
+
+export type { 
+  RequestConfig, 
+  RequestHandler, 
+  ResponseHandler, 
+  ErrorHandler, 
+  Interceptors,
+  RetryConfig,
+  RetryConfigOption,
+  // Legacy types for backward compatibility
+  RequestInterceptor, 
+  ResponseInterceptor, 
+  ErrorInterceptor 
+} from './types/index';
 
 // Export ApiResponse type for TypeScript users
 export type ApiResponse<T> = 
   | { success: true; data: T }
   | { success: false; status?: number; error: string };
-export { 
-    logout, 
-    setAccessToken, 
-    setRefreshToken, 
-    setTokens,
-    setGlobalSecretKey,
-    getAccessToken,
-    getRefreshToken,
-    isAccessTokenExpired,
-    isRefreshTokenExpired,
-    getAccessExpiresAt,
-    getRefreshExpiresAt,
-    TokenAge
-} from './core/TokenManager';
