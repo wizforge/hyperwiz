@@ -35,7 +35,6 @@
     "api-client",
     "typescript",
     "request-caching",
-    "jwt-auth",
     "developer-tools"
   ],
   "homepage": "https://hyperwiz.vercel.app/",
