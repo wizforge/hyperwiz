@@ -28,6 +28,11 @@ export type {
   Interceptors,
   RetryConfig,
   RetryConfigOption,
+  CacheConfig,
+  CacheConfigOption,
+  CacheStorage,
+  CachedResponse,
+  CacheKeyGenerator,
   // Legacy types for backward compatibility
   RequestInterceptor, 
   ResponseInterceptor, 

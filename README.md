@@ -84,6 +84,57 @@ const data = await api1.get('/unreliable-endpoint');
 const user = await api2.post('/users', { name: 'John' }); // POST retries as POST
 ```
 
+### Request Caching (Smart In-Memory or IndexedDB)
+
+```typescript
+// Option 1: Simple boolean (uses default cache configuration)
+const api1 = createClient('https://api.example.com', {
+  cache: true, // Uses default: 5min cache, memory storage, GET requests only
+  logging: true
+});
+
+// Option 2: Custom cache configuration
+const api2 = createClient('https://api.example.com', {
+  cache: {
+    enabled: true,
+    maxAge: 10 * 60 * 1000,  // Cache for 10 minutes
+    maxSize: 50,             // Maximum 50 cached items
+    storage: 'indexeddb',    // Use IndexedDB for persistence
+    includeQueryParams: true, // Include query params in cache key
+    cacheableMethods: ['GET', 'HEAD'], // Cache GET and HEAD requests
+    cacheableStatusCodes: [200, 304]   // Cache 200 and 304 responses
+  },
+  logging: true
+});
+
+// Option 3: Memory cache with custom settings
+const api3 = createClient('https://api.example.com', {
+  cache: {
+    enabled: true,
+    maxAge: 2 * 60 * 1000,   // Cache for 2 minutes
+    maxSize: 20,             // Maximum 20 cached items
+    storage: 'memory',       // Use in-memory storage (faster)
+    includeQueryParams: false // Ignore query params for cache key
+  },
+  logging: true
+});
+
+// Option 4: Disable caching
+const api4 = createClient('https://api.example.com', {
+  cache: false, // No caching
+  logging: true
+});
+
+// First request: fetches from server
+const users1 = await api1.get('/users'); // ⏳ Network request
+
+// Second request: served from cache (instant)
+const users2 = await api1.get('/users'); // 💾 Cache hit (instant)
+
+// Cache automatically expires after maxAge
+// Cache automatically evicts old entries when maxSize is reached
+```
+
 ### Manual Bearer Token Authentication
 
 ```typescript
@@ -237,6 +288,16 @@ const api = createClient('https://api.example.com', {
   //   backoffMultiplier: 2, // Exponential backoff multiplier
   //   retryOnStatus: [408, 429, 500, 502, 503, 504], // HTTP status codes to retry
   //   retryOnNetworkError: true // Retry on network errors
+  // },
+  cache: true,             // Request caching (boolean) or cache config object
+  // cache: {              // Custom cache configuration
+  //   enabled: true,      // Enable/disable caching
+  //   maxAge: 300000,     // Cache duration in milliseconds (5 minutes)
+  //   maxSize: 100,       // Maximum number of cached items
+  //   storage: 'memory',  // Storage type: 'memory' or 'indexeddb'
+  //   includeQueryParams: true, // Include query params in cache key
+  //   cacheableMethods: ['GET'], // HTTP methods that can be cached
+  //   cacheableStatusCodes: [200] // Status codes that can be cached
   // },
       interceptors: {          // Custom interceptors
       before: [(config, url) => { /* ... */ }],
@@ -587,6 +648,144 @@ function isRateLimitError(error: unknown): boolean {
 }
 ```
 
+### 11. **Smart Caching for Performance**
+
+```typescript
+// E-commerce app with different caching strategies
+class ProductAPI {
+  // Product catalog - long cache (rarely changes)
+  private catalogApi = createClient('https://api.shop.com', {
+    cache: {
+      enabled: true,
+      maxAge: 30 * 60 * 1000,  // 30 minutes
+      maxSize: 100,
+      storage: 'indexeddb',     // Persistent across sessions
+      cacheableMethods: ['GET'],
+      cacheableStatusCodes: [200]
+    }
+  });
+
+  // User-specific data - short cache (changes frequently)
+  private userApi = createClient('https://api.shop.com', {
+    cache: {
+      enabled: true,
+      maxAge: 2 * 60 * 1000,   // 2 minutes
+      maxSize: 20,
+      storage: 'memory',        // Fast access
+      cacheableMethods: ['GET'],
+      cacheableStatusCodes: [200]
+    }
+  });
+
+  // Real-time data - no cache
+  private realtimeApi = createClient('https://api.shop.com', {
+    cache: false, // Always fresh data
+    retry: true
+  });
+
+  // Product catalog (cached for 30 minutes)
+  async getProducts(category?: string) {
+    const url = category ? `/products?category=${category}` : '/products';
+    return await this.catalogApi.get(url);
+  }
+
+  // User cart (cached for 2 minutes)
+  async getUserCart() {
+    return await this.userApi.get('/user/cart', {
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    });
+  }
+
+  // Stock levels (no cache, always fresh)
+  async getStockLevels(productId: string) {
+    return await this.realtimeApi.get(`/products/${productId}/stock`);
+  }
+
+  // Clear cache when user logs out
+  clearUserCache() {
+    // Note: In a real app, you'd want to clear specific cache entries
+    // This is a simplified example
+    console.log('User logged out, cache will expire naturally');
+  }
+}
+
+// Usage
+const productAPI = new ProductAPI();
+
+// First load: fetches from server
+const products = await productAPI.getProducts('electronics'); // ⏳ Network request
+
+// Subsequent loads: instant from cache
+const products2 = await productAPI.getProducts('electronics'); // 💾 Cache hit (instant)
+
+// User cart: cached briefly for performance
+const cart = await productAPI.getUserCart(); // ⏳ Network request
+const cart2 = await productAPI.getUserCart(); // 💾 Cache hit (instant)
+
+// Stock levels: always fresh
+const stock = await productAPI.getStockLevels('123'); // ⏳ Always network request
+```
+
+### 12. **Advanced Caching with Cache Management**
+
+```typescript
+import { createClient } from 'hyperwiz';
+
+// Create client with custom cache storage
+const api = createClient('https://api.example.com', {
+  cache: {
+    enabled: true,
+    maxAge: 5 * 60 * 1000,  // 5 minutes
+    maxSize: 50,
+    storage: 'indexeddb',    // Persistent storage
+    includeQueryParams: true,
+    cacheableMethods: ['GET'],
+    cacheableStatusCodes: [200]
+  },
+  logging: true
+});
+
+// Cache management functions
+class CacheManager {
+  static async clearCache() {
+    // Clear all cached responses
+    const cacheStorage = new IndexedDBCacheStorage();
+    await cacheStorage.clear();
+    console.log('Cache cleared');
+  }
+
+  static async getCacheStats() {
+    const cacheStorage = new IndexedDBCacheStorage();
+    const keys = await cacheStorage.keys();
+    console.log(`Cache contains ${keys.length} items:`, keys);
+    return keys;
+  }
+
+  static async removeExpiredCache() {
+    const cacheStorage = new IndexedDBCacheStorage();
+    const keys = await cacheStorage.keys();
+    const now = Date.now();
+    
+    for (const key of keys) {
+      const cached = await cacheStorage.get(key);
+      if (cached && (now - cached.timestamp) > 5 * 60 * 1000) {
+        await cacheStorage.delete(key);
+        console.log(`Removed expired cache: ${key}`);
+      }
+    }
+  }
+}
+
+// Usage
+const users = await api.get('/users'); // First request: network
+const users2 = await api.get('/users'); // Second request: cache
+
+// Manage cache
+await CacheManager.getCacheStats(); // See what's cached
+await CacheManager.removeExpiredCache(); // Clean up expired entries
+await CacheManager.clearCache(); // Clear all cache
+```
+
 ## 🎯 Real-World Examples
 
 ### React Hook with Token Management
@@ -766,6 +965,7 @@ npm install hyperwiz
 - **🚀 Simple** - One-line setup, no complex configuration needed
 - **🔧 Flexible** - Manual control over authentication or automatic via interceptors
 - **🔄 Auto Retry** - Built-in adaptive backoff with exponential delay and jitter
+- **💾 Smart Caching** - In-memory or IndexedDB caching with automatic expiration
 - **🍪 Cookie Ready** - Built-in support for session-based authentication
 - **🔐 Token Ready** - Easy Bearer token handling (manual or automatic)
 - **⚡ Lightweight** - Small bundle size, no unnecessary dependencies

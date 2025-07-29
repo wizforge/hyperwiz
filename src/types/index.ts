@@ -18,6 +18,44 @@ export interface RetryConfig {
 // Retry configuration can be boolean or object
 export type RetryConfigOption = boolean | RetryConfig;
 
+// Cache Configuration
+export interface CacheConfig {
+  enabled?: boolean;
+  maxAge?: number; // Cache duration in milliseconds
+  maxSize?: number; // Maximum number of cached items
+  storage?: 'memory' | 'indexeddb';
+  includeQueryParams?: boolean; // Whether to include query params in cache key
+  cacheableMethods?: string[]; // HTTP methods that can be cached (default: ['GET'])
+  cacheableStatusCodes?: number[]; // Status codes that can be cached (default: [200])
+}
+
+export type CacheConfigOption = boolean | CacheConfig;
+
+// Cache Storage Interface
+export interface CacheStorage {
+  get(key: string): Promise<CachedResponse | null>;
+  set(key: string, value: CachedResponse): Promise<void>;
+  delete(key: string): Promise<void>;
+  clear(): Promise<void>;
+  keys(): Promise<string[]>;
+}
+
+// Cached Response Structure
+export interface CachedResponse {
+  data: unknown;
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  timestamp: number;
+  url: string;
+  method: string;
+}
+
+// Cache Key Generator
+export interface CacheKeyGenerator {
+  generate(method: string, url: string, body?: unknown): string;
+}
+
 // Improved interceptor types with better type safety
 export type RequestHandler = (config: RequestConfig, url: string) => RequestConfig | Promise<RequestConfig>;
 export type ResponseHandler<T = unknown> = (response: Response, data: T, url: string) => T | Promise<T>;

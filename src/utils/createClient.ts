@@ -1,5 +1,13 @@
 import { HttpClient } from "../core/HttpClient";
-import { Interceptors, RetryConfig, RetryConfigOption, RequestConfig } from "../types/index";
+import { Interceptors, RetryConfig, RetryConfigOption, RequestConfig, CacheConfig, CacheConfigOption, CachedResponse } from "../types/index";
+import { 
+  createCacheStorage, 
+  createCacheKeyGenerator, 
+  isCacheableRequest, 
+  isCacheableResponse, 
+  isExpired, 
+  CacheHitError 
+} from "./cache";
 
 export interface ClientConfig {
   interceptors?: Interceptors;
@@ -7,6 +15,7 @@ export interface ClientConfig {
   timeout?: number; // Request timeout in milliseconds
   credentials?: RequestCredentials; // Credentials mode for cross-origin requests
   retry?: RetryConfigOption; // Auto retry configuration
+  cache?: CacheConfigOption; // Request caching configuration
 }
 
 // Default retry configuration
@@ -17,6 +26,17 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
   backoffMultiplier: 2,
   retryOnStatus: [408, 429, 500, 502, 503, 504],
   retryOnNetworkError: true
+};
+
+// Default cache configuration
+const DEFAULT_CACHE_CONFIG: CacheConfig = {
+  enabled: true,
+  maxAge: 5 * 60 * 1000, // 5 minutes
+  maxSize: 100, // Maximum 100 cached items
+  storage: 'memory',
+  includeQueryParams: true,
+  cacheableMethods: ['GET'],
+  cacheableStatusCodes: [200]
 };
 
 // Default configuration
@@ -64,6 +84,82 @@ export const createClient = (baseUrl: string, config?: ClientConfig) => {
       // Add retry logic with adaptive backoff
       client.addErrorHandler((error, url, requestConfig) => {
         return handleRetry(error, url, retryConfig, client, requestConfig);
+      });
+    }
+  }
+
+  if (finalConfig.cache !== undefined) {
+    // Handle cache configuration
+    const cacheConfig = typeof finalConfig.cache === 'boolean'
+      ? (finalConfig.cache ? DEFAULT_CACHE_CONFIG : null)
+      : { ...DEFAULT_CACHE_CONFIG, ...finalConfig.cache };
+    
+    if (cacheConfig && cacheConfig.enabled !== false) {
+      // Add caching logic - create unique cache instance for this client
+      const cacheStorage = createCacheStorage(cacheConfig.storage || 'memory', cacheConfig.maxSize || 100);
+      const cacheKeyGenerator = createCacheKeyGenerator(cacheConfig.includeQueryParams || true);
+      
+      // Store request config for caching in after handler
+      let currentRequestConfig: RequestConfig | null = null;
+      
+      // Create a unique client ID to isolate cache instances
+      const clientId = Math.random().toString(36).substring(7);
+      
+      client.addBefore(async (config, url) => {
+        // Store the current request config for use in after handler
+        currentRequestConfig = config;
+        
+        // Check if request is cacheable
+        if (!isCacheableRequest(config.method, cacheConfig.cacheableMethods || ['GET'])) {
+          return config;
+        }
+
+        // Try to get cached response
+        const cacheKey = `${clientId}:${cacheKeyGenerator.generate(config.method, url, config.body)}`;
+        const cached = await cacheStorage.get(cacheKey);
+        
+        if (cached && !isExpired(cached, cacheConfig.maxAge || 5 * 60 * 1000)) {
+          console.log(`💾 Cache hit for ${url}`);
+          // Throw a special error to be caught by error handler
+          throw new CacheHitError(cached);
+        }
+        
+        return config;
+      });
+
+      client.addAfter(async (response, data, url) => {
+        // Cache successful responses
+        if (currentRequestConfig && isCacheableResponse(response.status, cacheConfig.cacheableStatusCodes || [200])) {
+          const cacheKey = `${clientId}:${cacheKeyGenerator.generate(currentRequestConfig.method, url, currentRequestConfig.body)}`;
+          const cachedResponse: CachedResponse = {
+            data,
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries()),
+            timestamp: Date.now(),
+            url,
+            method: currentRequestConfig.method
+          };
+          
+          await cacheStorage.set(cacheKey, cachedResponse);
+          console.log(`💾 Cached response for ${url}`);
+        }
+        
+        // Clear the stored request config
+        currentRequestConfig = null;
+        
+        return data;
+      });
+
+      client.addErrorHandler(async (error, url, requestConfig) => {
+        // Handle cache hits
+        if (error instanceof CacheHitError) {
+          console.log(`💾 Returning cached response for ${url}`);
+          return error.cachedResponse.data;
+        }
+        
+        // Re-throw other errors to maintain error handling chain
+        throw error;
       });
     }
   }
