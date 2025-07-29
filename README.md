@@ -1,7 +1,7 @@
 # hyperwiz
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/coderwizard/hyperwiz/main/logo.png" alt="hyperwiz logo" width="200" height="200">
+  <img src="https://github.com/wizforge/hyperwiz/blob/main/logo.png" alt="hyperwiz logo" width="200" height="200">
 </div>
 
 A lightweight, flexible HTTP client library with powerful interceptors for modern web applications.
