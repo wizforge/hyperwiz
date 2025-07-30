@@ -1,6 +1,6 @@
 {
   "name": "hyperwiz",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Next-generation TypeScript HTTP client with built-in retry, smart caching, and seamless authentication. Effortlessly handle API requests with advanced features for modern web development.",
   "author": "Parth Tyagi",
   "license": "Apache-2.0",
@@ -48,7 +48,6 @@
     "url": "https://github.com/wizforge/hyperwiz/issues"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3"
   }
