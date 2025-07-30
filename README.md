@@ -204,21 +204,6 @@ const profile = await api.get('/user/profile');
 const data = await api.get('/protected-data');
 ```
 
-### Cross-Origin Requests
-
-```typescript
-// For cross-origin requests with cookies
-const api = createClient('https://api.example.com', {
-  credentials: 'include', // Important for cookies
-  logging: true
-});
-
-// Cookies are automatically sent, developer adds any other headers
-const profile = await api.get('/user/profile', {
-  'X-API-Key': 'your-api-key'
-});
-```
-
 ### Custom Interceptors
 
 ```typescript
@@ -605,25 +590,7 @@ class EcommerceAPI {
 }
 ```
 
-### 9. **Server-Side Usage (Node.js)**
-
-```typescript
-import { createClient } from 'hyperwiz';
-
-const api = createClient('https://api.example.com', {
-  retry: true,
-  timeout: 30000
-});
-
-// Server-side API calls with environment variables
-const response = await api.get('/data', {
-  'Authorization': `Bearer ${process.env.API_TOKEN}`,
-  'X-Server-ID': process.env.SERVER_ID,
-  'User-Agent': 'MyApp/1.0'
-});
-```
-
-### 10. **Custom Error Handling with Retry**
+### 9. **Custom Error Handling with Retry**
 
 ```typescript
 const api = createClient('https://api.example.com', {
@@ -652,7 +619,7 @@ function isRateLimitError(error: unknown): boolean {
 }
 ```
 
-### 11. **Smart Caching for Performance**
+### 10. **Smart Caching for Performance**
 
 ```typescript
 // E-commerce app with different caching strategies
