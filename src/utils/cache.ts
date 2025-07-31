@@ -1,11 +1,9 @@
 import { CacheStorage, CachedResponse, CacheKeyGenerator } from '../types/index';
 
-// Custom error for cache hits
-export class CacheHitError extends Error {
-  constructor(public cachedResponse: CachedResponse) {
-    super('Cache hit');
-    this.name = 'CacheHitError';
-  }
+// Result type for cache operations
+export interface CacheResult {
+  hit: boolean;
+  data?: CachedResponse;
 }
 
 // Check if request is cacheable
@@ -17,6 +15,50 @@ export function isCacheableRequest(method: string, cacheableMethods: string[]): 
 // Check if response is cacheable
 export function isCacheableResponse(status: number, cacheableStatusCodes: number[]): boolean {
   return cacheableStatusCodes.includes(status);
+}
+
+// Validate cached response structure
+export function isValidCachedResponse(cached: unknown): cached is CachedResponse {
+  if (!cached || typeof cached !== 'object') {
+    return false;
+  }
+  
+  const response = cached as CachedResponse;
+  
+  // Check required fields
+  if (typeof response.data === 'undefined' ||
+      typeof response.status !== 'number' ||
+      typeof response.statusText !== 'string' ||
+      typeof response.timestamp !== 'number' ||
+      typeof response.url !== 'string' ||
+      typeof response.method !== 'string') {
+    return false;
+  }
+  
+  // Validate status code
+  if (response.status < 100 || response.status > 599) {
+    return false;
+  }
+  
+  // Validate timestamp
+  if (response.timestamp <= 0 || response.timestamp > Date.now() + 86400000) { // Max 1 day in future
+    return false;
+  }
+  
+  // Validate URL
+  try {
+    new URL(response.url);
+  } catch {
+    return false;
+  }
+  
+  // Validate method
+  const validMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+  if (!validMethods.includes(response.method.toUpperCase())) {
+    return false;
+  }
+  
+  return true;
 }
 
 // Check if cached response is expired
@@ -32,21 +74,19 @@ export function isExpired(cached: CachedResponse, maxAge: number): boolean {
 export function createCacheKeyGenerator(includeQueryParams: boolean): CacheKeyGenerator {
   return {
     generate(method: string, url: string, body?: unknown): string {
+      const m = method.toUpperCase();
       let key: string;
       
       if (includeQueryParams) {
-        // Include query parameters in the key - normalize the URL first
         try {
           if (url.startsWith('http')) {
             const urlObj = new URL(url);
-            // Sort query parameters for consistent keys
             const params = Array.from(urlObj.searchParams.entries())
               .sort(([a], [b]) => a.localeCompare(b))
               .map(([k, v]) => `${k}=${v}`)
               .join('&');
-            key = `${method.toUpperCase()}:${urlObj.pathname}${params ? `?${params}` : ''}`;
+            key = `${m}:${urlObj.pathname}${params ? `?${params}` : ''}`;
           } else {
-            // For relative URLs, parse and normalize query params
             const [pathname, queryString] = url.split('?');
             if (queryString) {
               const params = new URLSearchParams(queryString);
@@ -54,47 +94,33 @@ export function createCacheKeyGenerator(includeQueryParams: boolean): CacheKeyGe
                 .sort(([a], [b]) => a.localeCompare(b))
                 .map(([k, v]) => `${k}=${v}`)
                 .join('&');
-              key = `${method.toUpperCase()}:${pathname}?${sortedParams}`;
+              key = `${m}:${pathname}?${sortedParams}`;
             } else {
-              key = `${method.toUpperCase()}:${pathname}`;
+              key = `${m}:${pathname}`;
             }
           }
-        } catch (error) {
-          // Fallback: use the original URL if parsing fails
-          key = `${method.toUpperCase()}:${url}`;
+        } catch {
+          key = `${m}:${url}`;
         }
       } else {
-        // Remove query parameters
         try {
           if (url.startsWith('http')) {
             const urlObj = new URL(url);
-            key = `${method.toUpperCase()}:${urlObj.pathname}`;
+            key = `${m}:${urlObj.pathname}`;
           } else {
-            // For relative URLs, remove query params manually
-            const pathname = url.split('?')[0] || url;
-            key = `${method.toUpperCase()}:${pathname}`;
+            key = `${m}:${url.split('?')[0] || url}`;
           }
-        } catch (error) {
-          // Fallback: use the original URL without query params
-          const pathname = url.split('?')[0] || url;
-          key = `${method.toUpperCase()}:${pathname}`;
+        } catch {
+          key = `${m}:${url.split('?')[0] || url}`;
         }
       }
       
-      // Include body hash for non-GET requests
-      if (body && method.toUpperCase() !== 'GET') {
+      if (body && m !== 'GET') {
         try {
-          const bodyHash = JSON.stringify(body);
-          key += `:${bodyHash}`;
-        } catch (error) {
-          // Fallback: use string representation if JSON.stringify fails
+          key += `:${JSON.stringify(body)}`;
+        } catch {
           key += `:${String(body)}`;
         }
-      }
-      
-      // Add debug logging for cache key generation
-      if (process.env.NODE_ENV === 'development') {
-        console.debug(`🔑 Generated cache key: ${key} for ${method} ${url}`);
       }
       
       return key;
@@ -121,14 +147,13 @@ export class MemoryCacheStorage implements CacheStorage {
         return null;
       }
       
-      // Validate cached response structure
-      if (!cached.data || typeof cached.timestamp !== 'number') {
-        this.cache.delete(key); // Remove invalid cache entry
+      if (!isValidCachedResponse(cached)) {
+        this.cache.delete(key);
         this.missCount++;
         return null;
       }
       
-      // Optimize LRU: only move to end if cache has more than 1 item
+      // Simple LRU optimization
       if (this.cache.size > 1) {
         const keys = Array.from(this.cache.keys());
         const lastKey = keys[keys.length - 1];
@@ -139,15 +164,8 @@ export class MemoryCacheStorage implements CacheStorage {
       }
       
       this.hitCount++;
-      
-      // Add debug logging
-      if (process.env.NODE_ENV === 'development') {
-        console.debug(`💾 Cache hit for key: ${key} (hit rate: ${this.getHitRate()}%)`);
-      }
-      
       return cached;
-    } catch (error) {
-      console.warn('Error reading from memory cache:', error);
+    } catch {
       this.missCount++;
       return null;
     }
@@ -210,6 +228,10 @@ export class IndexedDBCacheStorage implements CacheStorage {
   private version = 1;
 
   constructor() {
+    // Check if IndexedDB is available
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      throw new Error('IndexedDB is not available in this environment');
+    }
     this.initDB();
   }
 
@@ -247,10 +269,11 @@ export class IndexedDBCacheStorage implements CacheStorage {
             }
             
             const cached = result.value;
-            // Validate cached response structure
-            if (!cached || !cached.data || typeof cached.timestamp !== 'number') {
+            // Validate cached response structure with enhanced validation
+            if (!isValidCachedResponse(cached)) {
               // Remove invalid cache entry
               this.delete(key).catch(() => {}); // Ignore deletion errors
+              console.warn('Removed invalid IndexedDB cache entry:', key);
               resolve(null);
               return;
             }

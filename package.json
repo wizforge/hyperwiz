@@ -1,23 +1,24 @@
 {
   "name": "hyperwiz",
-  "version": "1.0.4",
+  "version": "1.0.8",
   "description": "Next-generation TypeScript HTTP client with built-in retry, smart caching, and seamless authentication. Effortlessly handle API requests with advanced features for modern web development.",
   "author": "Parth Tyagi",
   "license": "Apache-2.0",
   "type": "module",
   "types": "dist/index.d.ts",
-  "main": "dist/index.js",
+  "main": "dist/index.cjs",
   "module": "dist/index.js",
   "sideEffects": false,
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "require": "./dist/index.cjs"
     }
   },
-  "engines": {
-    "node": ">=16.0.0"
-  },
+  "browser": "dist/index.js",
+  "unpkg": "dist/index.js",
+  "jsdelivr": "dist/index.js",
   "files": [
     "dist",
     "README.md"
@@ -37,7 +38,9 @@
     "request-caching",
     "developer-tools",
     "logging",
-    "auto-retry"
+    "auto-retry",
+    "es6",
+    "modern-browsers"
   ],
   "homepage": "https://hyperwiz.vercel.app/",
   "repository": {

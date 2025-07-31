@@ -68,6 +68,8 @@ export interface Interceptors {
   onError?: ErrorHandler[];     // When error occurs
 }
 
+
+
 // Legacy types for backward compatibility
 export type RequestInterceptor = RequestHandler;
 export type ResponseInterceptor<T = unknown> = ResponseHandler<T>;
