@@ -63,6 +63,11 @@ export class HttpClient {
   private timeoutHandler?: RequestHandler; // Store timeout interceptor reference
 
   constructor(baseUrl: string, interceptors?: Interceptors, credentials?: RequestCredentials) {
+    // Check if AbortController is available
+    if (typeof AbortController === 'undefined') {
+      throw new Error('AbortController is not available. Please use a polyfill for older browsers.');
+    }
+    
     this.baseUrl = baseUrl;
     this.interceptors = interceptors || {};
     this.credentials = credentials || 'same-origin';
@@ -144,6 +149,11 @@ export class HttpClient {
       const controller = new AbortController();
       this.timeoutControllers.set(requestId, controller);
 
+      // Check if fetch is available
+      if (typeof fetch === 'undefined') {
+        throw new Error('Fetch API is not available. Please use a polyfill for older browsers.');
+      }
+
       // Make the request with credentials support
       const response = await fetch(fullUrl, {
         method: finalConfig.method,
@@ -156,8 +166,14 @@ export class HttpClient {
       // Clean up timeout controller
       this.timeoutControllers.delete(requestId);
 
-      // Parse response
-      const data = await parseResponse(response);
+      // Parse response with error boundary
+      let data: unknown;
+      try {
+        data = await parseResponse(response);
+      } catch (parseError) {
+        console.warn('Failed to parse response:', parseError);
+        data = null;
+      }
 
       // Handle errors
       if (!response.ok) {
@@ -171,16 +187,33 @@ export class HttpClient {
         };
       }
 
-      // Run after handlers (response interceptors)
-      const processedData = await this.runAfterHandlers(response, data as T, fullUrl);
+      // Run after handlers (response interceptors) with error boundary
+      let processedData: T;
+      try {
+        processedData = await this.runAfterHandlers(response, data as T, fullUrl);
+      } catch (afterError) {
+        console.warn('Response interceptor failed:', afterError);
+        processedData = data as T;
+      }
 
       return { success: true, data: processedData };
     } catch (err) {
       // Clean up timeout controller on error
       this.timeoutControllers.delete(requestId);
       
-      const error = err instanceof Error ? err.message : 'Network error';
-      const processedError = await this.runErrorHandlers(error, fullUrl, config);
+      // Enhanced error handling with proper error boundaries
+      let errorMessage: string;
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      } else if (err && typeof err === 'object' && 'message' in err) {
+        errorMessage = String((err as { message: unknown }).message);
+      } else {
+        errorMessage = 'Unknown network error';
+      }
+      
+      const processedError = await this.runErrorHandlers(errorMessage, fullUrl, config);
       
       return {
         success: false,
@@ -300,13 +333,19 @@ export class HttpClient {
         controller.abort();
       }, timeoutMs);
 
-      // Clean up timeout when request completes
+      // Clean up timeout when request completes or is aborted
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+      };
+
+      // Add cleanup to both original and controller signals
       const originalSignal = config.signal;
       if (originalSignal) {
-        originalSignal.addEventListener('abort', () => {
-          clearTimeout(timeoutId);
-        });
+        originalSignal.addEventListener('abort', cleanup, { once: true });
       }
+
+      // Always add cleanup to controller signal
+      controller.signal.addEventListener('abort', cleanup, { once: true });
 
       return {
         ...config,

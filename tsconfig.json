@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES2017",                    // Modern JS output
+    "target": "ES2019",                    // Modern JS output
     "module": "ESNext",                    // ES module format (for modern bundlers)
     "rootDir": "./src",                    // Source files
     "outDir": "./dist",                    // Compiled output
