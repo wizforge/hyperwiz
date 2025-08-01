@@ -1,6 +1,6 @@
 {
   "name": "hyperwiz",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Next-generation TypeScript HTTP client with built-in retry, smart caching, and seamless authentication. Effortlessly handle API requests with advanced features for modern web development.",
   "author": "Parth Tyagi",
   "license": "Apache-2.0",
