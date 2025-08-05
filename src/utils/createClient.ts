@@ -35,6 +35,53 @@ const pendingRequests = new Map<string, Promise<unknown>>();
 // Global cache storage instances to share across client instances
 const globalCacheStorages = new Map<string, any>();
 
+// Track retry attempts per URL in memory instead of URL parameters
+const retryAttempts = new Map<string, { count: number; timestamp: number }>();
+
+// Cleanup configuration
+const CLEANUP_CONFIG = {
+  circuitBreakerTimeout: 60 * 60 * 1000, // 1 hour
+  retryAttemptsTimeout: 30 * 60 * 1000,  // 30 minutes
+  pendingRequestsTimeout: 5 * 60 * 1000,  // 5 minutes
+  cleanupInterval: 10 * 60 * 1000        // Run cleanup every 10 minutes
+};
+
+// Cleanup function to prevent memory leaks
+function cleanupOldEntries(): void {
+  const now = Date.now();
+  
+  // Cleanup circuit breakers
+  for (const [key, breaker] of circuitBreakers.entries()) {
+    if (now - breaker.lastFailureTime > CLEANUP_CONFIG.circuitBreakerTimeout) {
+      circuitBreakers.delete(key);
+    }
+  }
+  
+  // Cleanup retry attempts
+  for (const [key, attempt] of retryAttempts.entries()) {
+    if (now - attempt.timestamp > CLEANUP_CONFIG.retryAttemptsTimeout) {
+      retryAttempts.delete(key);
+    }
+  }
+  
+  // Cleanup pending requests (should be rare, but just in case)
+  for (const [key, promise] of pendingRequests.entries()) {
+    // Pending requests should resolve quickly, but clean up any stuck ones
+    if (now - Date.now() > CLEANUP_CONFIG.pendingRequestsTimeout) {
+      pendingRequests.delete(key);
+    }
+  }
+}
+
+// Start cleanup interval (only once)
+let cleanupIntervalStarted = false;
+function startCleanupInterval(): void {
+  if (!cleanupIntervalStarted && typeof setInterval !== 'undefined') {
+    setInterval(cleanupOldEntries, CLEANUP_CONFIG.cleanupInterval);
+    cleanupIntervalStarted = true;
+  }
+}
+
 // Default retry configuration
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
   maxRetries: 3,
@@ -52,7 +99,7 @@ const DEFAULT_CACHE_CONFIG: CacheConfig = {
   maxSize: 100,
   storage: 'memory',
   includeQueryParams: true,
-  cacheableMethods: ['GET'],
+  cacheableMethods: ['GET', 'HEAD'],
   cacheableStatusCodes: [200]
 };
 
@@ -120,15 +167,42 @@ function isNetworkError(error: unknown): boolean {
            error.message.includes('network') ||
            error.message.includes('Failed to fetch');
   }
+  // Handle string errors (common in fetch failures)
+  if (typeof error === 'string') {
+    return error.includes('fetch') ||
+           error.includes('network') ||
+           error.includes('Failed to fetch') ||
+           error.includes('ECONNREFUSED') ||
+           error.includes('ENOTFOUND') ||
+           error.includes('ETIMEDOUT');
+  }
   return false;
 }
 
 function isHttpError(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'status' in error;
+  // Check for objects with status property
+  if (typeof error === 'object' && error !== null && 'status' in error) {
+    return true;
+  }
+  
+  // Check for ApiResponse objects with success: false and status
+  if (typeof error === 'object' && error !== null && 'success' in error) {
+    const apiResponse = error as { success: boolean; status?: number };
+    return !apiResponse.success && apiResponse.status !== undefined;
+  }
+  
+  return false;
 }
 
 function getHttpStatus(error: unknown): number {
   if (isHttpError(error)) {
+    // Handle ApiResponse objects
+    if (typeof error === 'object' && error !== null && 'success' in error) {
+      const apiResponse = error as { success: boolean; status?: number };
+      return apiResponse.status || 0;
+    }
+    
+    // Handle regular HTTP error objects
     const httpError = error as { status?: number };
     return httpError.status || 0;
   }
@@ -136,13 +210,29 @@ function getHttpStatus(error: unknown): number {
 }
 
 function shouldRetry(error: unknown, retryConfig: RetryConfig): boolean {
+  // Always retry on network errors if enabled
   if (retryConfig.retryOnNetworkError && isNetworkError(error)) {
     return true;
   }
+  
+  // Retry on HTTP errors with specific status codes
   if (isHttpError(error) && retryConfig.retryOnStatus) {
     const status = getHttpStatus(error);
     return retryConfig.retryOnStatus.includes(status);
   }
+  
+  // Retry on string errors that look like network failures
+  if (retryConfig.retryOnNetworkError && typeof error === 'string') {
+    const lowerError = error.toLowerCase();
+    return lowerError.includes('fetch') ||
+           lowerError.includes('network') ||
+           lowerError.includes('connection') ||
+           lowerError.includes('timeout') ||
+           lowerError.includes('econnrefused') ||
+           lowerError.includes('enotfound') ||
+           lowerError.includes('etimedout');
+  }
+  
   return false;
 }
 
@@ -156,13 +246,12 @@ function calculateDelay(attempt: number, retryConfig: RetryConfig): number {
 }
 
 function getRetryAttempt(url: string): number {
-  const match = url.match(/__retry_attempt=(\d+)/);
-  return match ? parseInt(match[1]) : 0;
+  return retryAttempts.get(url)?.count || 0;
 }
 
 function addRetryAttempt(url: string, attempt: number): string {
-  const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}__retry_attempt=${attempt}`;
+  retryAttempts.set(url, { count: attempt, timestamp: Date.now() });
+  return url; // Return original URL without modification
 }
 
 function sleep(ms: number): Promise<void> {
@@ -237,14 +326,15 @@ async function handleRetry(
 }
 
 export const createClient = (baseUrl: string, config?: ClientConfig) => {
+  // Start cleanup interval when first client is created
+  startCleanupInterval();
+  
   const finalConfig = { ...DEFAULT_CONFIG, ...config };
   const client = new HttpClient(baseUrl, finalConfig.interceptors, finalConfig.credentials);
   
   if (finalConfig.logging) {
-    client.addBefore((config, url) => {
-      console.log(`🚀 ${config.method} ${url}`, config);
-      return config;
-    });
+    // Store logging flag in client for internal use
+    (client as any).enableLogging = true;
 
     client.addAfter((response, data, url) => {
       console.log(`✅ ${response.status} ${url}`, data);
@@ -261,20 +351,13 @@ export const createClient = (baseUrl: string, config?: ClientConfig) => {
     client.setTimeout(finalConfig.timeout);
   }
 
+  // Store retry config for cache wrapper to use
+  let retryConfig: RetryConfig | null = null;
+  
   if (finalConfig.retry) {
-    const retryConfig = typeof finalConfig.retry === 'boolean' 
+    retryConfig = typeof finalConfig.retry === 'boolean' 
       ? (finalConfig.retry ? DEFAULT_RETRY_CONFIG : null)
       : { ...DEFAULT_RETRY_CONFIG, ...finalConfig.retry };
-    
-    if (retryConfig) {
-      client.addErrorHandler((error, url, requestConfig) => {
-        const circuitBreakerKey = getCircuitBreakerKey(url);
-        if (!shouldAllowRequest(circuitBreakerKey)) {
-          return error;
-        }
-        return handleRetry(error, url, retryConfig, client, requestConfig);
-      });
-    }
   }
 
   if (finalConfig.cache !== undefined) {
@@ -329,39 +412,80 @@ export const createClient = (baseUrl: string, config?: ClientConfig) => {
         const pendingRequest = pendingRequests.get(requestKey);
         
         if (pendingRequest) {
+          if (finalConfig.logging) {
+            console.log(`🔄 Returning pending request for ${url}`);
+          }
           return pendingRequest as Promise<{ success: true; data: T } | { success: false; status?: number; error: string }>;
         }
         
-        // No cache hit or pending request, make the request
-        const requestPromise = originalGet<T>(url, headers).then(async (result) => {
-          const responseTime = Date.now() - startTime;
-          
-          if (finalConfig.logging) {
-            console.log(`📡 Cache MISS for ${url} (${responseTime}ms)`);
-          }
-          
-          // Cache successful responses
-          if (result.success && isCacheableResponse(200, cacheConfig.cacheableStatusCodes || [200])) {
-            const cachedResponse: CachedResponse = {
-              data: result.data,
-              status: 200,
-              statusText: 'OK',
-              headers: {},
-              timestamp: Date.now(),
-              url: url.startsWith('http') ? url : `${baseUrl}${url}`,
-              method: 'GET'
-            };
+        // No cache hit or pending request, make the request with retry logic
+        const requestPromise = (async () => {
+          try {
+            // Use original method but handle retry manually if needed
+            let result = await originalGet<T>(url, headers);
+            let attempts = 0;
+            const maxAttempts = retryConfig ? retryConfig.maxRetries! + 1 : 1;
             
-            await cacheStorage.set(cacheKey, cachedResponse);
-            if (finalConfig.logging) {
-              console.log(`💾 Cached response for ${url} (${responseTime}ms)`);
+            // Manual retry loop for cache wrapper
+            while (!result.success && attempts < maxAttempts && retryConfig) {
+              attempts++;
+              
+              if (attempts > 1) {
+                // Check if we should retry
+                if (!shouldRetry(result.error, retryConfig)) {
+                  break;
+                }
+                
+                // Calculate delay
+                const delay = calculateDelay(attempts - 2, retryConfig);
+                await sleep(delay);
+                
+                if (finalConfig.logging) {
+                  console.log(`🔄 Cache wrapper retry attempt ${attempts} for ${url}`);
+                }
+              }
+              
+              // Make another attempt
+              result = await originalGet<T>(url, headers);
             }
+            
+            const responseTime = Date.now() - startTime;
+            
+            if (finalConfig.logging) {
+              console.log(`📡 Cache MISS for ${url} (${responseTime}ms)`);
+            }
+            
+            // Cache successful responses
+            if (result.success && isCacheableResponse(200, cacheConfig.cacheableStatusCodes || [200])) {
+              const cachedResponse: CachedResponse = {
+                data: result.data,
+                status: 200,
+                statusText: 'OK',
+                headers: {},
+                timestamp: Date.now(),
+                url: url.startsWith('http') ? url : `${baseUrl}${url}`,
+                method: 'GET'
+              };
+              
+              await cacheStorage.set(cacheKey, cachedResponse);
+              if (finalConfig.logging) {
+                console.log(`💾 Cached response for ${url} (${responseTime}ms)`);
+              }
+            }
+            
+            return result;
+          } catch (error) {
+            // Let the error propagate
+            throw error;
           }
-          
-          return result;
-        }).finally(() => {
+        })().finally(() => {
           // Clean up pending request
           pendingRequests.delete(requestKey);
+          
+          // Log cleanup for debugging
+          if (finalConfig.logging && pendingRequests.size > 100) {
+            console.warn(`⚠️ High number of pending requests: ${pendingRequests.size}`);
+          }
         });
         
         // Store the pending request
@@ -471,4 +595,36 @@ export const createClient = (baseUrl: string, config?: ClientConfig) => {
   return client;
 };
 
-export const createPublicClient = (baseUrl: string) => createClient(baseUrl, { logging: true }); 
+export const createPublicClient = (baseUrl: string) => createClient(baseUrl, { logging: true });
+
+// Manual cleanup functions for advanced users
+export const cleanupCircuitBreakers = (): void => {
+  const now = Date.now();
+  for (const [key, breaker] of circuitBreakers.entries()) {
+    if (now - breaker.lastFailureTime > CLEANUP_CONFIG.circuitBreakerTimeout) {
+      circuitBreakers.delete(key);
+    }
+  }
+};
+
+export const cleanupRetryAttempts = (): void => {
+  const now = Date.now();
+  for (const [key, attempt] of retryAttempts.entries()) {
+    if (now - attempt.timestamp > CLEANUP_CONFIG.retryAttemptsTimeout) {
+      retryAttempts.delete(key);
+    }
+  }
+};
+
+export const cleanupPendingRequests = (): void => {
+  pendingRequests.clear();
+};
+
+export const getMemoryStats = () => {
+  return {
+    circuitBreakers: circuitBreakers.size,
+    retryAttempts: retryAttempts.size,
+    pendingRequests: pendingRequests.size,
+    globalCacheStorages: globalCacheStorages.size
+  };
+}; 
