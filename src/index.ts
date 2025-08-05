@@ -16,7 +16,11 @@
 
 export { 
   createClient, 
-  createPublicClient
+  createPublicClient,
+  cleanupCircuitBreakers,
+  cleanupRetryAttempts,
+  cleanupPendingRequests,
+  getMemoryStats
 } from './utils/createClient';
 export type { ClientConfig } from './utils/createClient';
 

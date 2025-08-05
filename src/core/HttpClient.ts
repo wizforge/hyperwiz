@@ -1,6 +1,6 @@
 import { RequestConfig, Interceptors, RequestHandler, ResponseHandler, ErrorHandler } from '../types/index';
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS' | 'PURGE';
 
 type ApiResponse<T> =
   | { success: true; data: T }
@@ -26,6 +26,89 @@ function normalizeUrl(base: string, path: string): string {
   } catch (error) {
     throw new Error(`Invalid URL: ${base}/${path}`);
   }
+}
+
+
+
+// Automatic Content-Type detection (only for JSON, text, HTML, XML)
+function detectContentType(body: unknown): { contentType: string; processedBody: unknown } {
+  // Handle null/undefined
+  if (body === null || body === undefined) {
+    return { contentType: 'application/json', processedBody: null };
+  }
+
+  // Handle strings - Only detect JSON, HTML, XML, and text
+  if (typeof body === 'string') {
+    // Check if it's JSON
+    try {
+      JSON.parse(body);
+      return { contentType: 'application/json', processedBody: body };
+    } catch {
+      // Check if it's HTML
+      if (body.trim().startsWith('<') && body.includes('</')) {
+        return { contentType: 'text/html', processedBody: body };
+      }
+      // Check if it's XML
+      if (body.trim().startsWith('<?xml') || body.trim().startsWith('<')) {
+        return { contentType: 'application/xml', processedBody: body };
+      }
+      // Default to plain text
+      return { contentType: 'text/plain', processedBody: body };
+    }
+  }
+
+  // Handle FormData
+  if (body instanceof FormData) {
+    return { contentType: 'multipart/form-data', processedBody: body };
+  }
+
+  // Handle URLSearchParams
+  if (body instanceof URLSearchParams) {
+    return { contentType: 'application/x-www-form-urlencoded', processedBody: body };
+  }
+
+  // Handle File - Use file's type or default to application/octet-stream
+  if (body instanceof File) {
+    const contentType = body.type || 'application/octet-stream';
+    return { contentType, processedBody: body };
+  }
+
+  // Handle Blob - Use blob's type or default to application/octet-stream
+  if (body instanceof Blob) {
+    const contentType = body.type || 'application/octet-stream';
+    return { contentType, processedBody: body };
+  }
+
+  // Handle ArrayBuffer - Default to application/octet-stream
+  if (body instanceof ArrayBuffer) {
+    return { contentType: 'application/octet-stream', processedBody: body };
+  }
+
+  // Handle TypedArrays - Default to application/octet-stream
+  if (body instanceof Uint8Array || body instanceof Uint16Array || 
+      body instanceof Uint32Array || body instanceof Int8Array || 
+      body instanceof Int16Array || body instanceof Int32Array || 
+      body instanceof Float32Array || body instanceof Float64Array) {
+    return { contentType: 'application/octet-stream', processedBody: body };
+  }
+
+  // Handle Date objects
+  if (body instanceof Date) {
+    return { contentType: 'application/json', processedBody: body.toISOString() };
+  }
+
+  // Handle objects and arrays (JSON)
+  if (typeof body === 'object') {
+    return { contentType: 'application/json', processedBody: JSON.stringify(body) };
+  }
+
+  // Handle numbers, booleans, etc. (JSON)
+  return { contentType: 'application/json', processedBody: JSON.stringify(body) };
+}
+
+// Check if Content-Type header should be automatically set
+function shouldSetContentType(method: string, body: unknown): boolean {
+  return body !== null && body !== undefined && ['POST', 'PUT', 'PATCH'].includes(method);
 }
 
 // Improved content-type parsing
@@ -61,6 +144,7 @@ export class HttpClient {
   private timeoutControllers = new Map<string, AbortController>();
   private credentials: RequestCredentials = 'same-origin';
   private timeoutHandler?: RequestHandler; // Store timeout interceptor reference
+  public enableLogging?: boolean; // Add logging flag
 
   constructor(baseUrl: string, interceptors?: Interceptors, credentials?: RequestCredentials) {
     // Check if AbortController is available
@@ -139,11 +223,53 @@ export class HttpClient {
       // Run before handlers (request interceptors)
       const finalConfig = await this.runBeforeHandlers(config, fullUrl);
       
+      // Automatic Content-Type detection and body processing
+      let processedBody: BodyInit | null | undefined = finalConfig.body as BodyInit | null | undefined;
+      let contentType: string | undefined;
+
+      if (shouldSetContentType(finalConfig.method, finalConfig.body)) {
+        const { contentType: detectedType, processedBody: processed } = detectContentType(finalConfig.body);
+        contentType = detectedType;
+        processedBody = processed as BodyInit | null | undefined;
+      }
+
+      // Log request details after all interceptors have run
+      if (this.enableLogging) {
+        const finalHeaders: Record<string, string> = {};
+        
+        // Copy existing headers
+        if (finalConfig.headers) {
+          if (typeof finalConfig.headers === 'object' && !Array.isArray(finalConfig.headers)) {
+            Object.assign(finalHeaders, finalConfig.headers);
+          }
+        }
+        
+        // Add detected Content-Type for logging
+        if (contentType && !finalHeaders['Content-Type']) {
+          finalHeaders['Content-Type'] = contentType;
+        }
+        
+        console.log(`🚀 ${finalConfig.method} ${fullUrl}`, {
+          method: finalConfig.method,
+          headers: finalHeaders,
+          body: processedBody
+        });
+      }
+
       // Set default headers
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(finalConfig.headers || {}),
-      };
+      const headers: Record<string, string> = {};
+      
+      // Copy existing headers
+      if (finalConfig.headers) {
+        if (typeof finalConfig.headers === 'object' && !Array.isArray(finalConfig.headers)) {
+          Object.assign(headers, finalConfig.headers);
+        }
+      }
+      
+      // Add detected Content-Type if not already set
+      if (contentType && !headers['Content-Type']) {
+        headers['Content-Type'] = contentType;
+      }
 
       // Create abort controller for timeout
       const controller = new AbortController();
@@ -158,7 +284,7 @@ export class HttpClient {
       const response = await fetch(fullUrl, {
         method: finalConfig.method,
         headers,
-        body: finalConfig.body ? JSON.stringify(finalConfig.body) : undefined,
+        body: processedBody,
         signal: finalConfig.signal || controller.signal,
         credentials: this.credentials, // Include credentials for cookies
       });
@@ -222,6 +348,8 @@ export class HttpClient {
     }
   }
 
+
+
   // Simplified HTTP methods with better naming
   get<T>(url: string, headers?: HeadersInit) {
     return this.request<T>(url, { method: 'GET', headers });
@@ -241,6 +369,19 @@ export class HttpClient {
 
   delete<T>(url: string, headers?: HeadersInit) {
     return this.request<T>(url, { method: 'DELETE', headers });
+  }
+
+  // Additional HTTP methods for enhanced functionality
+  head<T>(url: string, headers?: HeadersInit) {
+    return this.request<T>(url, { method: 'HEAD', headers });
+  }
+
+  options<T>(url: string, headers?: HeadersInit) {
+    return this.request<T>(url, { method: 'OPTIONS', headers });
+  }
+
+  purge<T>(url: string, headers?: HeadersInit) {
+    return this.request<T>(url, { method: 'PURGE', headers });
   }
 
   // Convenience methods for common use cases

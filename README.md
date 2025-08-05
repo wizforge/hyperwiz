@@ -52,6 +52,15 @@ const patchedUser = await api.patch('/users/1', { email: 'john.new@example.com' 
 
 // DELETE request
 const deleted = await api.delete('/users/1');
+
+// HEAD request - Get headers only (useful for checking if resource exists)
+const userExists = await api.head('/users/123');
+
+// OPTIONS request - Get allowed methods for a resource (CORS preflight)
+const allowedMethods = await api.options('/users');
+
+// PURGE request - Clear cache (useful for CDNs like Cloudflare)
+const cacheCleared = await api.purge('/cache/clear');
 ```
 
 ### Auto Retry with Adaptive Backoff
@@ -138,6 +147,181 @@ const users2 = await api1.get('/users'); // 💾 Cache hit (instant)
 // Cache automatically expires after maxAge
 // Cache automatically evicts old entries when maxSize is reached
 ```
+
+### Additional HTTP Methods
+
+hyperwiz supports additional HTTP methods beyond the standard REST operations for enhanced functionality:
+
+```typescript
+const api = createClient('https://api.example.com');
+
+// HEAD - Get headers only (no body)
+// Useful for checking if resource exists without downloading data
+const userExists = await api.head('/users/123');
+if (userExists.success) {
+  console.log('User exists!');
+  console.log('Last modified:', userExists.data.headers['last-modified']);
+}
+
+// OPTIONS - Get allowed methods for a resource
+// Essential for CORS preflight requests and API discovery
+const capabilities = await api.options('/users');
+if (capabilities.success) {
+  console.log('Allowed methods:', capabilities.data.headers['allow']);
+  console.log('CORS headers:', capabilities.data.headers['access-control-allow-methods']);
+}
+
+// PURGE - Clear cache
+// Useful for CDNs like Cloudflare, Fastly, etc.
+const cacheCleared = await api.purge('/cache/clear');
+if (cacheCleared.success) {
+  console.log('Cache cleared successfully');
+}
+```
+
+**Use Cases:**
+
+- **HEAD**: Check resource existence, get metadata, validate URLs
+- **OPTIONS**: CORS preflight, API discovery, check server capabilities  
+- **PURGE**: Cache invalidation, CDN management, content updates
+
+### Automatic Content-Type Detection
+
+hyperwiz automatically detects and sets the appropriate `Content-Type` header for common data types:
+
+```typescript
+const api = createClient('https://api.example.com');
+
+// 📊 JSON objects/arrays - automatically sets 'application/json'
+const user = await api.post('/users', { name: 'John', email: 'john@example.com' });
+// Content-Type: application/json
+
+// 📝 Plain text - automatically sets 'text/plain'
+const message = await api.post('/messages', 'Hello, world!');
+// Content-Type: text/plain
+
+// 🌐 HTML content - automatically sets 'text/html'
+const htmlContent = await api.post('/content', '<h1>Hello</h1><p>World</p>');
+// Content-Type: text/html
+
+// 📋 XML content - automatically sets 'application/xml'
+const xmlData = await api.post('/data', '<?xml version="1.0"?><root><item>value</item></root>');
+// Content-Type: application/xml
+
+// 📦 FormData - automatically sets 'multipart/form-data'
+const formData = new FormData();
+formData.append('name', 'John');
+formData.append('file', fileInput.files[0]);
+const result = await api.post('/upload', formData);
+// Content-Type: multipart/form-data
+
+// 🔗 URLSearchParams - automatically sets 'application/x-www-form-urlencoded'
+const params = new URLSearchParams();
+params.append('name', 'John');
+params.append('email', 'john@example.com');
+const response = await api.post('/users', params);
+// Content-Type: application/x-www-form-urlencoded
+
+// 📁 File/Blob objects - uses their built-in type property
+await api.post('/upload', file); // Uses file.type
+await api.post('/upload', blob); // Uses blob.type
+
+// 💾 Binary data - defaults to 'application/octet-stream'
+const buffer = new ArrayBuffer(8);
+const binary = await api.post('/binary', buffer);
+// Content-Type: application/octet-stream
+
+// 📅 Dates - automatically converts to ISO string and sets 'application/json'
+const date = new Date();
+const event = await api.post('/events', date);
+// Content-Type: application/json, body: "2024-01-01T00:00:00.000Z"
+
+// 🔢 Numbers/Booleans - automatically sets 'application/json'
+await api.post('/config', { enabled: true, count: 42 });
+// Content-Type: application/json
+```
+
+**Supported Data Types:**
+
+| Data Type | Content-Type | Detection Method |
+|-----------|-------------|------------------|
+| Objects/Arrays | `application/json` | Automatic |
+| Strings (JSON) | `application/json` | Content analysis |
+| Strings (HTML) | `text/html` | Content analysis |
+| Strings (XML) | `application/xml` | Content analysis |
+| Strings (other) | `text/plain` | Default |
+| FormData | `multipart/form-data` | Type check |
+| URLSearchParams | `application/x-www-form-urlencoded` | Type check |
+| File | `file.type` | File properties |
+| Blob | `blob.type` | Blob properties |
+| ArrayBuffer | `application/octet-stream` | Default |
+| TypedArrays | `application/octet-stream` | Default |
+| Date | `application/json` | Automatic |
+| Numbers/Booleans | `application/json` | Automatic |
+
+**Manual Override:**
+
+You can always manually override the Content-Type header:
+
+```typescript
+// Override automatic detection
+const response = await api.post('/custom', data, {
+  'Content-Type': 'application/custom+json'
+});
+```
+
+### 📁 File Upload Examples
+
+**Simple file upload with automatic Content-Type detection:**
+
+```typescript
+const api = createClient('https://api.example.com');
+
+// 🖼️ Profile Picture Upload - Send actual file
+const fileInput = document.getElementById('fileInput') as HTMLInputElement;
+const file = fileInput.files[0];
+await api.post('/profile/upload', file);
+// Content-Type: image/jpeg (from file.type)
+
+// 📄 Document Upload - Send actual file
+const pdfFile = new File(['pdf content'], 'document.pdf', { type: 'application/pdf' });
+await api.post('/documents/upload', pdfFile);
+// Content-Type: application/pdf (from file.type)
+
+// 🎵 Audio Upload - Send actual file
+const audioBlob = new Blob(['audio content'], { type: 'audio/mpeg' });
+await api.post('/audio/upload', audioBlob);
+// Content-Type: audio/mpeg (from blob.type)
+
+// 🎬 Video Upload - Send actual file
+const videoFile = new File(['video content'], 'movie.mp4', { type: 'video/mp4' });
+await api.post('/video/upload', videoFile);
+// Content-Type: video/mp4 (from file.type)
+
+// 📦 Multiple Files - Use FormData
+const formData = new FormData();
+formData.append('photo', photoFile);
+formData.append('document', documentFile);
+formData.append('audio', audioFile);
+await api.post('/upload-multiple', formData);
+// Content-Type: multipart/form-data
+
+// 🖼️ Image Gallery Upload - Use FormData
+const galleryForm = new FormData();
+galleryFiles.forEach((file, index) => {
+  galleryForm.append(`image${index}`, file);
+});
+await api.post('/gallery/upload', galleryForm);
+// Content-Type: multipart/form-data
+```
+
+**How it works:**
+- **Step 1**: Developer sends actual file objects (`File`, `Blob`, `FormData`)
+- **Step 2**: Library uses the file's built-in `type` property
+- **Step 3**: Automatically sets the correct `Content-Type` header
+- **Step 4**: Sends the request with proper Content-Type
+- **Result**: Developer sends actual file content - **zero configuration needed!**
+- **Supports**: All file types that have proper MIME types
 
 ### Manual Bearer Token Authentication
 
@@ -285,7 +469,7 @@ const api = createClient('https://api.example.com', {
   //   maxSize: 100,       // Maximum number of cached items
   //   storage: 'memory',  // Storage type: 'memory' or 'indexeddb'
   //   includeQueryParams: true, // Include query params in cache key
-  //   cacheableMethods: ['GET'], // HTTP methods that can be cached
+  //   cacheableMethods: ['GET', 'HEAD'], // HTTP methods that can be cached
   //   cacheableStatusCodes: [200] // Status codes that can be cached
   // },
       interceptors: {          // Custom interceptors
@@ -304,9 +488,190 @@ const api = createClient('https://api.example.com', {
 // Basic client
 createClient(baseUrl: string, config?: ClientConfig): HttpClient
 
-// Public client (with logging)
+// Public client (with logging enabled by default)
 createPublicClient(baseUrl: string): HttpClient
 ```
+
+### createPublicClient - Quick Development Setup
+
+The `createPublicClient` function is a convenience method that creates an HTTP client with logging enabled by default. Perfect for development and debugging.
+
+```typescript
+import { createPublicClient } from 'hyperwiz';
+
+// Creates a client with automatic logging
+const api = createPublicClient('https://api.example.com');
+
+// Equivalent to:
+// const api = createClient('https://api.example.com', { logging: true });
+
+// All requests are automatically logged to console
+const users = await api.get('/users');
+// Console output: ✅ 200 https://api.example.com/users [response data]
+
+const newUser = await api.post('/users', { name: 'John' });
+// Console output: ✅ 201 https://api.example.com/users [created user data]
+```
+
+### Memory Management Functions
+
+For long-running applications, hyperwiz provides memory management utilities to prevent memory leaks and monitor resource usage:
+
+```typescript
+import { 
+  cleanupCircuitBreakers,
+  cleanupRetryAttempts, 
+  cleanupPendingRequests,
+  getMemoryStats 
+} from 'hyperwiz';
+```
+
+#### cleanupCircuitBreakers()
+Manually cleans up circuit breaker states that are older than 1 hour.
+
+```typescript
+// Clean up circuit breaker tracking data
+cleanupCircuitBreakers();
+
+// Use in maintenance routines
+setInterval(() => {
+  cleanupCircuitBreakers();
+  console.log('Circuit breakers cleaned up');
+}, 30 * 60 * 1000); // Every 30 minutes
+```
+
+#### cleanupRetryAttempts()
+Manually cleans up retry attempt tracking data older than 30 minutes.
+
+```typescript
+// Clean up retry tracking data
+cleanupRetryAttempts();
+
+// Use during user session changes
+function logout() {
+  cleanupRetryAttempts(); // Clear retry history
+  // ... other logout logic
+}
+```
+
+#### cleanupPendingRequests()
+Immediately clears all pending request deduplication data.
+
+```typescript
+// Clear all pending requests (useful during app shutdown)
+cleanupPendingRequests();
+
+// Use when switching contexts or during cleanup
+function resetApplication() {
+  cleanupPendingRequests(); // Clear any ongoing requests
+  // ... other reset logic
+}
+```
+
+#### getMemoryStats()
+Returns statistics about memory usage for monitoring and debugging.
+
+```typescript
+// Monitor memory usage
+const stats = getMemoryStats();
+console.log('Memory stats:', stats);
+// Output: {
+//   circuitBreakers: 5,        // Number of active circuit breakers
+//   retryAttempts: 12,         // Number of tracked retry attempts
+//   pendingRequests: 3,        // Number of pending requests
+//   globalCacheStorages: 2     // Number of cache storage instances
+// }
+
+// Use in monitoring dashboards
+function monitorMemoryUsage() {
+  const stats = getMemoryStats();
+  
+  if (stats.pendingRequests > 50) {
+    console.warn('High number of pending requests:', stats.pendingRequests);
+  }
+  
+  if (stats.circuitBreakers > 20) {
+    console.warn('Many circuit breakers active, consider cleanup');
+  }
+  
+  // Send to analytics or monitoring service
+  analytics.track('hyperwiz_memory_stats', stats);
+}
+```
+
+#### Complete Memory Management Example
+
+```typescript
+import { 
+  createClient, 
+  cleanupCircuitBreakers, 
+  cleanupRetryAttempts, 
+  cleanupPendingRequests,
+  getMemoryStats 
+} from 'hyperwiz';
+
+class ApiService {
+  private api = createClient('https://api.example.com', {
+    retry: true,
+    cache: true,
+    logging: process.env.NODE_ENV === 'development'
+  });
+
+  constructor() {
+    this.startMaintenanceTimer();
+  }
+
+  // Periodic cleanup for memory management
+  private startMaintenanceTimer() {
+    setInterval(() => {
+      // Clean up old data
+      cleanupCircuitBreakers();
+      cleanupRetryAttempts();
+      
+      // Monitor memory usage
+      const stats = getMemoryStats();
+      console.log('Memory cleanup completed:', stats);
+      
+      // Alert if memory usage is high
+      if (stats.pendingRequests > 100) {
+        console.warn('Memory leak warning: Too many pending requests');
+      }
+    }, 10 * 60 * 1000); // Every 10 minutes
+  }
+
+  // Clean shutdown
+  async shutdown() {
+    console.log('Shutting down API service...');
+    
+    // Force clear all pending requests
+    cleanupPendingRequests();
+    
+    // Clean up tracking data
+    cleanupCircuitBreakers();
+    cleanupRetryAttempts();
+    
+    const finalStats = getMemoryStats();
+    console.log('Final memory stats after cleanup:', finalStats);
+  }
+
+  // User logout - clear sensitive data
+  async logout() {
+    // Clear pending requests for security
+    cleanupPendingRequests();
+    console.log('User session cleaned up');
+  }
+}
+
+// Usage
+const apiService = new ApiService();
+
+// During app shutdown
+window.addEventListener('beforeunload', () => {
+  apiService.shutdown();
+});
+```
+
+**Note:** The library automatically runs cleanup every 10 minutes, but these manual functions give you fine-grained control for specific use cases like application shutdown, user logout, or custom maintenance schedules.
 
 ### HTTP Methods
 
@@ -317,6 +682,11 @@ api.post<T>(url: string, body: unknown, headers?: HeadersInit)
 api.put<T>(url: string, body: unknown, headers?: HeadersInit)
 api.patch<T>(url: string, body: unknown, headers?: HeadersInit)
 api.delete<T>(url: string, headers?: HeadersInit)
+
+// Additional HTTP methods
+api.head<T>(url: string, headers?: HeadersInit)
+api.options<T>(url: string, headers?: HeadersInit)
+api.purge<T>(url: string, headers?: HeadersInit)
 ```
 
 ### Interceptor Methods
@@ -631,7 +1001,7 @@ class ProductAPI {
       maxAge: 30 * 60 * 1000,  // 30 minutes
       maxSize: 100,
       storage: 'indexeddb',     // Persistent across sessions
-      cacheableMethods: ['GET'],
+      cacheableMethods: ['GET', 'HEAD'],
       cacheableStatusCodes: [200]
     }
   });
@@ -643,7 +1013,7 @@ class ProductAPI {
       maxAge: 2 * 60 * 1000,   // 2 minutes
       maxSize: 20,
       storage: 'memory',        // Fast access
-      cacheableMethods: ['GET'],
+      cacheableMethods: ['GET', 'HEAD'],
       cacheableStatusCodes: [200]
     }
   });
@@ -710,7 +1080,7 @@ const api = createClient('https://api.example.com', {
     maxSize: 50,
     storage: 'indexeddb',    // Persistent storage
     includeQueryParams: true,
-    cacheableMethods: ['GET'],
+    cacheableMethods: ['GET', 'HEAD'],
     cacheableStatusCodes: [200]
   },
   logging: true
@@ -826,129 +1196,4 @@ class UserAPI {
 
 ### E-commerce with Retry Strategies
 
-```typescript
-class EcommerceAPI {
-  private criticalApi = createClient('https://api.shop.com', {
-    retry: {
-      maxRetries: 5,           // More retries for critical operations
-      retryDelay: 500,         // Start with shorter delay
-      maxDelay: 5000,          // Shorter max delay
-      backoffMultiplier: 1.5,  // Gentler backoff
-      retryOnStatus: [500, 502, 503, 504], // Only retry server errors
-      retryOnNetworkError: true
-    }
-  });
-
-  private normalApi = createClient('https://api.shop.com', {
-    retry: {
-      maxRetries: 3,           // Standard retries
-      retryDelay: 1000,        // Standard delay
-      maxDelay: 10000,         // Standard max delay
-      backoffMultiplier: 2,    // Standard backoff
-      retryOnStatus: [408, 429, 500, 502, 503, 504],
-      retryOnNetworkError: true
-    }
-  });
-
-  // Critical operation - aggressive retry
-  async createOrder(orderData: any) {
-    return await this.criticalApi.post('/orders', orderData);
-  }
-
-  // Normal operation - standard retry
-  async getProducts() {
-    return await this.normalApi.get('/products');
-  }
-}
 ```
-
-### Server-Side Usage (Node.js)
-
-```typescript
-import { createClient } from 'hyperwiz';
-
-const api = createClient('https://api.example.com');
-
-// Server-side token
-const response = await api.get('/data', {
-  'Authorization': `Bearer ${process.env.API_TOKEN}`,
-  'X-Server-ID': process.env.SERVER_ID
-});
-```
-
-## 🔒 TypeScript Support
-
-```typescript
-// Full type safety
-interface User {
-  id: number;
-  name: string;
-  email: string;
-}
-
-const api = createClient('https://api.example.com');
-
-// TypeScript knows the response type
-const users = await api.get<User[]>('/users');
-if (users.success) {
-  users.data.forEach(user => {
-    console.log(user.name); // TypeScript autocomplete works
-  });
-}
-```
-
-## 🛡️ Error Handling
-
-```typescript
-const api = createClient('https://api.example.com');
-
-// All responses are wrapped in ApiResponse<T>
-const response = await api.get('/users');
-
-if (response.success) {
-  // Handle success
-  console.log('Users:', response.data);
-} else {
-  // Handle error
-  console.error('Error:', response.error);
-  console.error('Status:', response.status);
-}
-```
-
-## 🔄 Response Format
-
-All requests return a consistent response format:
-
-```typescript
-type ApiResponse<T> = 
-  | { success: true; data: T }
-  | { success: false; status?: number; error: string };
-```
-
-## 📦 Installation
-
-```bash
-npm install hyperwiz
-```
-
-## 🌟 Why Choose hyperwiz?
-
-- **🚀 Simple** - One-line setup, no complex configuration needed
-- **🔧 Flexible** - Manual control over authentication or automatic via interceptors
-- **🔄 Auto Retry** - Built-in adaptive backoff with exponential delay and jitter
-- **💾 Smart Caching** - In-memory or IndexedDB caching with automatic expiration
-- **🍪 Cookie Ready** - Built-in support for session-based authentication
-- **🔐 Token Ready** - Easy Bearer token handling (manual or automatic)
-- **⚡ Lightweight** - Small bundle size, no unnecessary dependencies
-- **🛡️ Type Safe** - Full TypeScript support with proper type inference
-- **🌐 Modern** - Built for modern web applications with fetch API
-- **📝 Developer Friendly** - Clear API, comprehensive logging, and error handling
-- **🎯 Production Ready** - Timeout handling, request cancellation, and robust error recovery
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.

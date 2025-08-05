@@ -1,5 +1,5 @@
 export interface RequestConfig {
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS' | 'PURGE';
     headers?: HeadersInit;
     body?: unknown; // Changed from 'any' to 'unknown' for better type safety
     signal?: AbortSignal;
