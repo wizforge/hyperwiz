@@ -4,6 +4,16 @@
   <img src="https://github.com/wizforge/hyperwiz/blob/main/logo.png" alt="hyperwiz logo" width="200" height="200">
 </div>
 
+<div align="center">
+
+[![npm version](https://img.shields.io/npm/v/hyperwiz.svg?style=flat-square)](https://www.npmjs.com/package/hyperwiz)
+[![npm downloads](https://img.shields.io/npm/dm/hyperwiz.svg?style=flat-square)](https://www.npmjs.com/package/hyperwiz)
+[![bundle size](https://img.shields.io/bundlephobia/minzip/hyperwiz?style=flat-square)](https://bundlephobia.com/package/hyperwiz)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg?style=flat-square)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/npm/l/hyperwiz.svg?style=flat-square)](https://github.com/wizforge/hyperwiz/blob/main/LICENSE)
+
+</div>
+
 A lightweight, flexible HTTP client library with powerful interceptors for modern web applications.
 
 ## ✨ Features
